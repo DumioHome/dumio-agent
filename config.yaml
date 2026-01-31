@@ -7,9 +7,9 @@ version: "1.0.0"
 slug: "dumio_agent"
 url: "https://github.com/DumioHome/dumio-agent"
 
-# Docker Hub image (pre-built, faster install)
-# Format: repository/image-{arch}:version
-image: "juaniimelodev/dumio-agent-{arch}"
+# NOTE: Para usar imágenes pre-construidas de Docker Hub, descomentar la siguiente línea:
+# image: "juaniimelodev/dumio-agent-{arch}"
+# Sin esta línea, Home Assistant construirá la imagen localmente desde el Dockerfile
 
 # Supported architectures
 arch:
