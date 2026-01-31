@@ -68,18 +68,21 @@ function getEnvNumber(key: string, defaultValue: number): number {
 
 /**
  * Load configuration - supports both add-on and standalone modes
+ * 
+ * For Add-on mode: run.sh reads config.yaml options via bashio and exports them as ENV vars
+ * For Standalone mode: reads from .env file
  */
 export function loadConfig(): AppConfig {
   const isAddon = isHomeAssistantAddon();
 
   if (isAddon) {
     // Running as Home Assistant Add-on
-    const options = loadAddonOptions();
-    const supervisorToken = process.env.SUPERVISOR_TOKEN ?? '';
+    // ENV vars are set by run.sh from config.yaml options via bashio
+    const supervisorToken = process.env.SUPERVISOR_TOKEN ?? process.env.HA_ACCESS_TOKEN ?? '';
 
     return {
       homeAssistant: {
-        // Use internal Supervisor WebSocket URL
+        // URL set by run.sh, defaults to internal Supervisor WebSocket URL
         url: process.env.HA_URL ?? 'ws://supervisor/core/websocket',
         accessToken: supervisorToken,
       },
@@ -87,18 +90,20 @@ export function loadConfig(): AppConfig {
         name: getEnvOrDefault('AGENT_NAME', 'dumio-agent'),
       },
       logging: {
-        level: (options.log_level as LogLevel) ?? getEnvOrDefault('LOG_LEVEL', 'info') as LogLevel,
+        // Set by run.sh from config.yaml log_level option
+        level: getEnvOrDefault('LOG_LEVEL', 'info') as LogLevel,
         pretty: false, // Structured logging for add-on
       },
       reconnection: {
-        interval: (options.reconnect_interval as number) ?? getEnvNumber('RECONNECT_INTERVAL', 5000),
-        maxAttempts: (options.max_reconnect_attempts as number) ?? getEnvNumber('MAX_RECONNECT_ATTEMPTS', 10),
+        // Set by run.sh from config.yaml options
+        interval: getEnvNumber('RECONNECT_INTERVAL', 5000),
+        maxAttempts: getEnvNumber('MAX_RECONNECT_ATTEMPTS', 10),
       },
       isAddon: true,
     };
   }
 
-  // Standalone mode
+  // Standalone mode - reads from .env file
   return {
     homeAssistant: {
       url: getEnvOrThrow('HA_URL'),

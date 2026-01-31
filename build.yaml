@@ -1,6 +1,7 @@
 # Build configuration for Home Assistant Add-on
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-build-configuration
 
+# Use pre-built images from Docker Hub (faster install)
 build_from:
   amd64: ghcr.io/hassio-addons/base:15.0.8
   aarch64: ghcr.io/hassio-addons/base:15.0.8
@@ -14,7 +15,7 @@ args:
 labels:
   org.opencontainers.image.title: "Dumio Agent"
   org.opencontainers.image.description: "Agente inteligente para Home Assistant"
-  org.opencontainers.image.vendor: "Dumio"
+  org.opencontainers.image.vendor: "DumioHome"
   org.opencontainers.image.source: "https://github.com/DumioHome/dumio-agent"
   io.hass.name: "Dumio Agent"
   io.hass.description: "Agente inteligente para Home Assistant"

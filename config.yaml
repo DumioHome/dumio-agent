@@ -6,6 +6,11 @@ description: "Agente inteligente para Home Assistant con comunicación WebSocket
 version: "1.0.0"
 slug: "dumio_agent"
 url: "https://github.com/DumioHome/dumio-agent"
+
+# Docker Hub image (pre-built, faster install)
+# Format: repository/image-{arch}:version
+image: "juaniimelodev/dumio-agent-{arch}"
+
 arch:
   - amd64
   - aarch64
