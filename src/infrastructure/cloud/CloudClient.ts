@@ -25,6 +25,10 @@ export class CloudClient implements ICloudClient {
   private _connectionState: CloudConnectionState = 'disconnected';
   private connectionStateHandlers: Array<(state: CloudConnectionState) => void> = [];
   private healthInterval: NodeJS.Timeout | null = null;
+  
+  // Smart health reporting - only send when changes detected
+  private lastHealthData: AgentHealthData | null = null;
+  private lastHealthHash: string = '';
 
   constructor(
     private readonly config: CloudClientConfig,
@@ -34,6 +38,32 @@ export class CloudClient implements ICloudClient {
       socketUrl: config.socketUrl,
       agentId: config.agentId,
     });
+  }
+
+  /**
+   * Generate a hash of the health data for comparison
+   */
+  private hashHealthData(data: AgentHealthData): string {
+    // Only hash the fields that matter for detecting changes
+    return JSON.stringify({
+      status: data.status,
+      haConnected: data.homeAssistant.connected,
+      entityCount: data.homeAssistant.entityCount,
+      deviceCount: data.homeAssistant.deviceCount,
+    });
+  }
+
+  /**
+   * Check if health data has changed
+   */
+  private hasHealthChanged(data: AgentHealthData): boolean {
+    const newHash = this.hashHealthData(data);
+    if (newHash !== this.lastHealthHash) {
+      this.lastHealthHash = newHash;
+      this.lastHealthData = data;
+      return true;
+    }
+    return false;
   }
 
   get connectionState(): CloudConnectionState {
@@ -178,26 +208,54 @@ export class CloudClient implements ICloudClient {
   }
 
   /**
-   * Start periodic health reporting
+   * Start smart health reporting - only sends when changes are detected
    */
   startHealthReporting(
     getHealthData: () => Promise<AgentHealthData>,
     intervalMs: number = 30000
   ): void {
-    // Send initial health
-    getHealthData().then((data) => this.sendHealth(data));
+    // Send initial health (always send first time)
+    getHealthData().then((data) => {
+      this.lastHealthHash = this.hashHealthData(data);
+      this.lastHealthData = data;
+      this.sendHealth(data);
+      this.logger.info('Initial health data sent to cloud');
+    });
 
-    // Set up periodic reporting
+    // Set up periodic check - only sends if changes detected
     this.healthInterval = setInterval(async () => {
       try {
         const data = await getHealthData();
-        this.sendHealth(data);
+        
+        if (this.hasHealthChanged(data)) {
+          this.sendHealth(data);
+          this.logger.info('Health data changed, sent to cloud', {
+            status: data.status,
+            haConnected: data.homeAssistant.connected,
+            entityCount: data.homeAssistant.entityCount,
+          });
+        } else {
+          this.logger.debug('Health data unchanged, skipping send');
+        }
       } catch (error) {
         this.logger.error('Failed to get health data', { error });
       }
     }, intervalMs);
 
-    this.logger.info('Health reporting started', { intervalMs });
+    this.logger.info('Smart health reporting started', { 
+      intervalMs,
+      description: 'Only sends updates when changes are detected'
+    });
+  }
+
+  /**
+   * Force send health data (bypasses change detection)
+   */
+  forceSendHealth(data: AgentHealthData): void {
+    this.lastHealthHash = this.hashHealthData(data);
+    this.lastHealthData = data;
+    this.sendHealth(data);
+    this.logger.info('Health data force-sent to cloud');
   }
 
   private setupCloudEventHandlers(): void {

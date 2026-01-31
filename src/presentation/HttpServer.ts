@@ -35,7 +35,9 @@ export class HttpServer {
   private statusCache: StatusInfo | null = null;
   private statusCacheTime: number = 0;
   private cacheInvalidated: boolean = true; // Start invalidated to fetch on first request
-  private lastConnectionState: ConnectionState = 'disconnected';
+  
+  // Lightweight connection state tracking (updated via events, no WebSocket calls)
+  private currentConnectionState: ConnectionState = 'disconnected';
   private lastEntityCount: number = 0;
   private lastDeviceCount: number = 0;
 
@@ -61,14 +63,25 @@ export class HttpServer {
   }
 
   /**
-   * Notify of connection state change
+   * Notify of connection state change (lightweight - just updates memory)
    */
   onConnectionChange(state: ConnectionState): void {
-    if (state !== this.lastConnectionState) {
-      this.lastConnectionState = state;
+    if (state !== this.currentConnectionState) {
+      const previousState = this.currentConnectionState;
+      this.currentConnectionState = state;
       this.invalidateCache();
-      this.logger.info('Connection state changed, cache invalidated', { state });
+      this.logger.info('Connection state changed, cache invalidated', { 
+        previousState, 
+        newState: state 
+      });
     }
+  }
+
+  /**
+   * Get current connection state (from memory, no WebSocket call)
+   */
+  getConnectionState(): ConnectionState {
+    return this.currentConnectionState;
   }
 
   /**
@@ -85,6 +98,7 @@ export class HttpServer {
 
   /**
    * Get cached status or fetch new one if cache is invalidated
+   * Used by /api/status endpoint (not by /health)
    */
   private async getCachedStatus(): Promise<StatusInfo | null> {
     if (!this.statusProvider) return null;
@@ -96,15 +110,14 @@ export class HttpServer {
       return this.statusCache;
     }
 
-    // Fetch new status
+    // Fetch new status (this makes WebSocket calls)
     try {
       this.logger.info('Fetching fresh status (cache was invalidated)');
       this.statusCache = await this.statusProvider();
       this.statusCacheTime = Date.now();
       this.cacheInvalidated = false;
       
-      // Update tracking values
-      this.lastConnectionState = this.statusCache.websocket.state;
+      // Update tracking values for change detection
       this.lastEntityCount = this.statusCache.homeAssistant.entityCount;
       this.lastDeviceCount = this.statusCache.homeAssistant.deviceCount;
       
@@ -179,8 +192,9 @@ export class HttpServer {
 
     try {
       // Route handling
+      // Health check is LIGHTWEIGHT - no async calls, uses in-memory state only
       if (path === '/health' && method === 'GET') {
-        return await this.handleHealth(res);
+        return this.handleHealth(res);
       }
 
       if (path === '/api/status' && method === 'GET') {
@@ -245,23 +259,20 @@ export class HttpServer {
     }
   }
 
-  private async handleHealth(res: ServerResponse): Promise<void> {
-    const status = await this.getCachedStatus();
+  /**
+   * Health check - LIGHTWEIGHT, no WebSocket calls
+   * Uses only in-memory state updated via events
+   */
+  private handleHealth(res: ServerResponse): void {
+    const connected = this.currentConnectionState === 'connected';
+    const uptime = Math.floor((Date.now() - this.startTime) / 1000);
     
-    if (status) {
-      const healthy = status.websocket.connected;
-      this.sendJson(res, healthy ? 200 : 503, {
-        status: healthy ? 'healthy' : 'unhealthy',
-        timestamp: new Date().toISOString(),
-        websocket: status.websocket.state,
-        uptime: status.uptime,
-      });
-    } else {
-      this.sendJson(res, 200, {
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-      });
-    }
+    this.sendJson(res, connected ? 200 : 503, {
+      status: connected ? 'healthy' : 'unhealthy',
+      timestamp: new Date().toISOString(),
+      websocket: this.currentConnectionState,
+      uptime,
+    });
   }
 
   private async handleStatus(res: ServerResponse, forceRefresh: boolean = false): Promise<void> {
