@@ -31,6 +31,17 @@ else
     export MAX_RECONNECT_ATTEMPTS="10"
 fi
 
+# Cloud configuration (optional)
+if bashio::config.exists 'cloud_socket_url' && bashio::config.has_value 'cloud_socket_url'; then
+    export CLOUD_SOCKET_URL=$(bashio::config 'cloud_socket_url')
+    bashio::log.info "Cloud Socket URL configured"
+fi
+
+if bashio::config.exists 'cloud_api_key' && bashio::config.has_value 'cloud_api_key'; then
+    export CLOUD_API_KEY=$(bashio::config 'cloud_api_key')
+    bashio::log.info "Cloud API Key configured"
+fi
+
 export AGENT_NAME="dumio-agent"
 export NODE_ENV="production"
 
@@ -40,6 +51,11 @@ bashio::log.info "  - Log Level: ${LOG_LEVEL}"
 bashio::log.info "  - Reconnect Interval: ${RECONNECT_INTERVAL}ms"
 bashio::log.info "  - Max Reconnect Attempts: ${MAX_RECONNECT_ATTEMPTS}"
 bashio::log.info "  - WebSocket URL: ${HA_URL}"
+if [ -n "${CLOUD_SOCKET_URL:-}" ]; then
+    bashio::log.info "  - Cloud: Enabled"
+else
+    bashio::log.info "  - Cloud: Disabled (no URL configured)"
+fi
 
 # Start the application
 bashio::log.info "Starting Node.js application..."
