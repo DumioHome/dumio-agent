@@ -16,3 +16,13 @@ configuration:
     description: >-
       Número máximo de intentos de reconexión antes de abandonar.
       Configura un valor más alto para redes inestables.
+  cloud_socket_url:
+    name: URL del Socket Cloud
+    description: >-
+      URL del servidor cloud para conectarse (ej: https://cloud.dumio.io/agent).
+      Dejar vacío para deshabilitar la conexión cloud.
+  cloud_api_key:
+    name: API Key del Cloud
+    description: >-
+      Clave API para autenticarse con el servidor cloud.
+      Requerida si se configura la URL del Socket Cloud.

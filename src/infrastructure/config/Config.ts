@@ -13,6 +13,11 @@ export interface AppConfig {
   agent: {
     name: string;
   };
+  cloud: {
+    socketUrl: string;
+    apiKey: string;
+    enabled: boolean;
+  };
   logging: {
     level: LogLevel;
     pretty: boolean;
@@ -79,6 +84,8 @@ export function loadConfig(): AppConfig {
     // Running as Home Assistant Add-on
     // ENV vars are set by run.sh from config.yaml options via bashio
     const supervisorToken = process.env.SUPERVISOR_TOKEN ?? process.env.HA_ACCESS_TOKEN ?? '';
+    const cloudSocketUrl = process.env.CLOUD_SOCKET_URL ?? '';
+    const cloudApiKey = process.env.CLOUD_API_KEY ?? '';
 
     return {
       homeAssistant: {
@@ -88,6 +95,11 @@ export function loadConfig(): AppConfig {
       },
       agent: {
         name: getEnvOrDefault('AGENT_NAME', 'dumio-agent'),
+      },
+      cloud: {
+        socketUrl: cloudSocketUrl,
+        apiKey: cloudApiKey,
+        enabled: !!cloudSocketUrl && !!cloudApiKey,
       },
       logging: {
         // Set by run.sh from config.yaml log_level option
@@ -104,6 +116,9 @@ export function loadConfig(): AppConfig {
   }
 
   // Standalone mode - reads from .env file
+  const cloudSocketUrl = process.env.CLOUD_SOCKET_URL ?? '';
+  const cloudApiKey = process.env.CLOUD_API_KEY ?? '';
+
   return {
     homeAssistant: {
       url: getEnvOrThrow('HA_URL'),
@@ -111,6 +126,11 @@ export function loadConfig(): AppConfig {
     },
     agent: {
       name: getEnvOrDefault('AGENT_NAME', 'dumio-agent'),
+    },
+    cloud: {
+      socketUrl: cloudSocketUrl,
+      apiKey: cloudApiKey,
+      enabled: !!cloudSocketUrl && !!cloudApiKey,
     },
     logging: {
       level: getEnvOrDefault('LOG_LEVEL', 'info') as LogLevel,

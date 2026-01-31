@@ -29,12 +29,16 @@ options:
   log_level: info
   reconnect_interval: 5000
   max_reconnect_attempts: 10
+  cloud_socket_url: ""
+  cloud_api_key: ""
 
 # Schema for options validation
 schema:
   log_level: list(trace|debug|info|warn|error|fatal)
   reconnect_interval: int(1000,60000)
   max_reconnect_attempts: int(1,100)
+  cloud_socket_url: str?
+  cloud_api_key: str?
 
 # Ports (for API access)
 ports:
