@@ -42,11 +42,19 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && secrets.DOCKERHUB_TOKEN != ''
         uses: docker/login-action@v3
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+        continue-on-error: true
+        id: docker_login
+
+      - name: Check login status
+        run: |
+          if [ "${{ steps.docker_login.outcome }}" == "failure" ] || [ "${{ steps.docker_login.outcome }}" == "skipped" ]; then
+            echo "::warning::Docker Hub login skipped or failed. Images will be built but not pushed."
+          fi
 
       - name: Extract version
         id: version
@@ -65,7 +73,7 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ steps.docker_login.outcome == 'success' && github.event_name != 'pull_request' }}
           tags: |
             ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}-${{ matrix.arch }}:${{ steps.version.outputs.version }}
             ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}-${{ matrix.arch }}:latest
