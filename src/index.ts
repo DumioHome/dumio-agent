@@ -50,6 +50,9 @@ async function main(): Promise<void> {
     pretty: config.logging.pretty,
   });
 
+  // Start time for uptime calculation
+  const startTime = Date.now();
+
   logger.info('Dumio Agent starting', {
     name: config.agent.name,
     mode: config.isAddon ? 'Home Assistant Add-on' : 'Standalone',
@@ -108,6 +111,25 @@ async function main(): Promise<void> {
     { port: HTTP_API_PORT }
   );
 
+  // Configure status provider for HTTP endpoints
+  httpServer.setStatusProvider(async () => {
+    const stats = await agent.getDeviceStats();
+    const entities = await agent.getState();
+    return {
+      version: AGENT_VERSION,
+      uptime: Math.floor((Date.now() - startTime) / 1000),
+      websocket: {
+        state: haClient.connectionState,
+        connected: haClient.connectionState === 'connected',
+        url: config.isAddon ? 'ws://supervisor/core/websocket' : config.homeAssistant.url,
+      },
+      homeAssistant: {
+        entityCount: entities.length,
+        deviceCount: stats.total,
+      },
+    };
+  });
+
   // Initialize Cloud Client (if configured)
   let cloudClient: CloudClient | null = null;
   if (config.cloud.enabled) {
@@ -120,9 +142,6 @@ async function main(): Promise<void> {
       logger.child({ component: 'CloudClient' })
     );
   }
-
-  // Start time for uptime calculation
-  const startTime = Date.now();
 
   // Generate persistent device ID
   const dumioDeviceId = getDumioDeviceId(config.isAddon);

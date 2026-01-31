@@ -2,10 +2,25 @@ import { createServer, IncomingMessage, ServerResponse } from 'http';
 import type { Agent } from './Agent.js';
 import type { ILogger } from '../domain/ports/ILogger.js';
 import type { DeviceFilter } from '../domain/entities/Device.js';
+import type { ConnectionState } from '../domain/ports/IHomeAssistantClient.js';
 
 export interface HttpServerConfig {
   port: number;
   host?: string;
+}
+
+export interface StatusInfo {
+  version: string;
+  uptime: number;
+  websocket: {
+    state: ConnectionState;
+    connected: boolean;
+    url: string;
+  };
+  homeAssistant: {
+    entityCount: number;
+    deviceCount: number;
+  };
 }
 
 /**
@@ -13,12 +28,21 @@ export interface HttpServerConfig {
  */
 export class HttpServer {
   private server: ReturnType<typeof createServer> | null = null;
+  private startTime: number = Date.now();
+  private statusProvider: (() => Promise<StatusInfo>) | null = null;
 
   constructor(
     private readonly agent: Agent,
     private readonly logger: ILogger,
     private readonly config: HttpServerConfig
   ) {}
+
+  /**
+   * Set status provider function for detailed status info
+   */
+  setStatusProvider(provider: () => Promise<StatusInfo>): void {
+    this.statusProvider = provider;
+  }
 
   /**
    * Start the HTTP server
@@ -76,7 +100,11 @@ export class HttpServer {
     try {
       // Route handling
       if (path === '/health' && method === 'GET') {
-        return this.sendJson(res, 200, { status: 'healthy', timestamp: new Date().toISOString() });
+        return await this.handleHealth(res);
+      }
+
+      if (path === '/api/status' && method === 'GET') {
+        return await this.handleStatus(res);
       }
 
       if (path === '/api/devices' && method === 'GET') {
@@ -132,6 +160,47 @@ export class HttpServer {
       return this.sendJson(res, 500, {
         error: 'Internal Server Error',
         message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  private async handleHealth(res: ServerResponse): Promise<void> {
+    if (this.statusProvider) {
+      try {
+        const status = await this.statusProvider();
+        const healthy = status.websocket.connected;
+        this.sendJson(res, healthy ? 200 : 503, {
+          status: healthy ? 'healthy' : 'unhealthy',
+          timestamp: new Date().toISOString(),
+          websocket: status.websocket.state,
+          uptime: status.uptime,
+        });
+      } catch {
+        this.sendJson(res, 200, {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } else {
+      this.sendJson(res, 200, {
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  private async handleStatus(res: ServerResponse): Promise<void> {
+    if (this.statusProvider) {
+      const status = await this.statusProvider();
+      this.sendJson(res, 200, {
+        ...status,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      this.sendJson(res, 200, {
+        status: 'running',
+        timestamp: new Date().toISOString(),
+        uptime: Math.floor((Date.now() - this.startTime) / 1000),
       });
     }
   }

@@ -55,11 +55,11 @@ schema:
   cloud_api_key: password?
   enable_api: bool
 
-# Ports (for API access - optional external access)
+# Ports (for API access - external access for tools like Bruno/Postman)
 ports:
-  "3000/tcp": null
+  "3000/tcp": 3000
 ports_description:
-  "3000/tcp": "API REST (opcional, usar ingress preferentemente)"
+  "3000/tcp": "API REST (accesible en http://<homeassistant-ip>:3000)"
 
 # Map configuration
 map:
