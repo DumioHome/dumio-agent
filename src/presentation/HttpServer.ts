@@ -1,0 +1,283 @@
+import { createServer, IncomingMessage, ServerResponse } from 'http';
+import type { Agent } from './Agent.js';
+import type { ILogger } from '../domain/ports/ILogger.js';
+import type { DeviceFilter } from '../domain/entities/Device.js';
+
+export interface HttpServerConfig {
+  port: number;
+  host?: string;
+}
+
+/**
+ * HTTP Server for REST API access to the Agent
+ */
+export class HttpServer {
+  private server: ReturnType<typeof createServer> | null = null;
+
+  constructor(
+    private readonly agent: Agent,
+    private readonly logger: ILogger,
+    private readonly config: HttpServerConfig
+  ) {}
+
+  /**
+   * Start the HTTP server
+   */
+  start(): Promise<void> {
+    return new Promise((resolve) => {
+      this.server = createServer((req, res) => {
+        this.handleRequest(req, res);
+      });
+
+      this.server.listen(this.config.port, this.config.host ?? '0.0.0.0', () => {
+        this.logger.info('HTTP Server started', {
+          port: this.config.port,
+          host: this.config.host ?? '0.0.0.0',
+        });
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Stop the HTTP server
+   */
+  stop(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.server) {
+        this.server.close(() => {
+          this.logger.info('HTTP Server stopped');
+          resolve();
+        });
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+    const path = url.pathname;
+    const method = req.method ?? 'GET';
+
+    this.logger.debug('HTTP Request', { method, path });
+
+    // CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    try {
+      // Route handling
+      if (path === '/health' && method === 'GET') {
+        return this.sendJson(res, 200, { status: 'healthy', timestamp: new Date().toISOString() });
+      }
+
+      if (path === '/api/devices' && method === 'GET') {
+        return await this.handleGetDevices(req, res, url);
+      }
+
+      if (path === '/api/devices/details' && method === 'GET') {
+        return await this.handleGetDevicesWithDetails(req, res, url);
+      }
+
+      if (path === '/api/devices/stats' && method === 'GET') {
+        return await this.handleGetDeviceStats(res);
+      }
+
+      if (path === '/api/rooms' && method === 'GET') {
+        return await this.handleGetRooms(res);
+      }
+
+      if (path === '/api/rooms/with-devices' && method === 'GET') {
+        return await this.handleGetRoomsWithDevices(res);
+      }
+
+      if (path.startsWith('/api/rooms/') && method === 'GET') {
+        const roomId = path.split('/')[3];
+        return await this.handleGetRoom(res, roomId);
+      }
+
+      if (path === '/api/home/overview' && method === 'GET') {
+        return await this.handleGetHomeOverview(res);
+      }
+
+      if (path === '/api/all' && method === 'GET') {
+        return await this.handleGetAllData(res);
+      }
+
+      if (path === '/api/service/call' && method === 'POST') {
+        return await this.handleCallService(req, res);
+      }
+
+      if (path === '/api/conversation' && method === 'POST') {
+        return await this.handleConversation(req, res);
+      }
+
+      if (path === '/api/entities' && method === 'GET') {
+        return await this.handleGetEntities(res, url);
+      }
+
+      // 404 Not Found
+      return this.sendJson(res, 404, { error: 'Not Found', path });
+
+    } catch (error) {
+      this.logger.error('HTTP Request error', error);
+      return this.sendJson(res, 500, {
+        error: 'Internal Server Error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  private async handleGetDevices(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const filter = this.parseDeviceFilter(url);
+    const devices = await this.agent.getDevices(filter);
+    this.sendJson(res, 200, { devices, count: devices.length });
+  }
+
+  private async handleGetDevicesWithDetails(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    const filter = this.parseDeviceFilter(url);
+    const devices = await this.agent.getDevicesWithDetails(filter);
+    this.sendJson(res, 200, { devices, count: devices.length });
+  }
+
+  private async handleGetDeviceStats(res: ServerResponse): Promise<void> {
+    const stats = await this.agent.getDeviceStats();
+    this.sendJson(res, 200, stats);
+  }
+
+  private async handleGetRooms(res: ServerResponse): Promise<void> {
+    const rooms = await this.agent.getRooms();
+    this.sendJson(res, 200, { rooms, count: rooms.length });
+  }
+
+  private async handleGetRoomsWithDevices(res: ServerResponse): Promise<void> {
+    const rooms = await this.agent.getRoomsWithDevices();
+    this.sendJson(res, 200, { rooms, count: rooms.length });
+  }
+
+  private async handleGetRoom(res: ServerResponse, roomId: string): Promise<void> {
+    const room = await this.agent.getRoom(roomId);
+    if (!room) {
+      return this.sendJson(res, 404, { error: 'Room not found', roomId });
+    }
+    this.sendJson(res, 200, room);
+  }
+
+  private async handleGetHomeOverview(res: ServerResponse): Promise<void> {
+    const overview = await this.agent.getHomeOverview();
+    this.sendJson(res, 200, overview);
+  }
+
+  private async handleGetAllData(res: ServerResponse): Promise<void> {
+    const data = await this.agent.getAllMappedData();
+    this.sendJson(res, 200, data);
+  }
+
+  private async handleCallService(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await this.parseBody<{
+      domain: string;
+      service: string;
+      entityId?: string | string[];
+      data?: Record<string, unknown>;
+    }>(req);
+
+    if (!body.domain || !body.service) {
+      return this.sendJson(res, 400, { error: 'domain and service are required' });
+    }
+
+    const result = await this.agent.callService(body.domain, body.service, body.entityId, body.data);
+    this.sendJson(res, 200, result);
+  }
+
+  private async handleConversation(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await this.parseBody<{
+      text: string;
+      conversationId?: string;
+    }>(req);
+
+    if (!body.text) {
+      return this.sendJson(res, 400, { error: 'text is required' });
+    }
+
+    const result = await this.agent.processConversation(body.text, body.conversationId);
+    this.sendJson(res, 200, result);
+  }
+
+  private async handleGetEntities(res: ServerResponse, url: URL): Promise<void> {
+    const domain = url.searchParams.get('domain');
+    const entityId = url.searchParams.get('entityId');
+
+    if (entityId) {
+      const entities = await this.agent.getState(entityId);
+      this.sendJson(res, 200, { entities, count: entities.length });
+    } else if (domain) {
+      const entities = await this.agent.getEntitiesByDomain(domain);
+      this.sendJson(res, 200, { entities, count: entities.length });
+    } else {
+      const entities = await this.agent.getState();
+      this.sendJson(res, 200, { entities, count: entities.length });
+    }
+  }
+
+  private parseDeviceFilter(url: URL): DeviceFilter | undefined {
+    const roomId = url.searchParams.get('roomId');
+    const type = url.searchParams.get('type');
+    const isOnline = url.searchParams.get('isOnline');
+    const isOn = url.searchParams.get('isOn');
+    const search = url.searchParams.get('search');
+    const onlyPhysical = url.searchParams.get('onlyPhysical');
+    const includeAll = url.searchParams.get('includeAll');
+    const integration = url.searchParams.get('integration');
+    const integrations = url.searchParams.get('integrations');
+    const manufacturer = url.searchParams.get('manufacturer');
+
+    const filter: DeviceFilter = {};
+
+    if (roomId) filter.roomId = roomId;
+    if (type) filter.type = type as any;
+    if (isOnline !== null) filter.isOnline = isOnline === 'true';
+    if (isOn !== null) filter.isOn = isOn === 'true';
+    if (search) filter.search = search;
+    
+    // By default onlyPhysical is true, but can be disabled
+    if (onlyPhysical !== null) filter.onlyPhysical = onlyPhysical === 'true';
+    if (includeAll !== null) filter.includeAll = includeAll === 'true';
+    
+    // Integration filters (tuya, zha, zigbee2mqtt, mqtt, hue, etc.)
+    if (integration) filter.integration = integration;
+    if (integrations) filter.integrations = integrations.split(',').map((s) => s.trim());
+    if (manufacturer) filter.manufacturer = manufacturer;
+
+    return Object.keys(filter).length > 0 ? filter : undefined;
+  }
+
+  private parseBody<T>(req: IncomingMessage): Promise<T> {
+    return new Promise((resolve, reject) => {
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk.toString();
+      });
+      req.on('end', () => {
+        try {
+          resolve(body ? JSON.parse(body) : {});
+        } catch (error) {
+          reject(new Error('Invalid JSON body'));
+        }
+      });
+      req.on('error', reject);
+    });
+  }
+
+  private sendJson(res: ServerResponse, status: number, data: unknown): void {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(data, null, 2));
+  }
+}

@@ -1,0 +1,18 @@
+# Development Dockerfile with hot reload
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Copy source (will be overridden by volume mount)
+COPY tsconfig.json ./
+COPY src ./src
+
+# Set environment
+ENV NODE_ENV=development
+
+# Start with tsx watch for hot reload
+CMD ["npm", "run", "dev"]

@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  dumio-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dumio-agent
+    restart: unless-stopped
+    environment:
+      # Home Assistant Configuration
+      - HA_URL=${HA_URL:-ws://homeassistant:8123/api/websocket}
+      - HA_ACCESS_TOKEN=${HA_ACCESS_TOKEN}
+      # Agent Configuration
+      - AGENT_NAME=${AGENT_NAME:-dumio-agent}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Reconnection settings
+      - RECONNECT_INTERVAL=${RECONNECT_INTERVAL:-5000}
+      - MAX_RECONNECT_ATTEMPTS=${MAX_RECONNECT_ATTEMPTS:-10}
+      # Node environment
+      - NODE_ENV=production
+    networks:
+      - homeassistant
+    # For development with .env file
+    env_file:
+      - .env
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Development service with hot reload
+  dumio-agent-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: dumio-agent-dev
+    profiles:
+      - dev
+    restart: unless-stopped
+    environment:
+      - HA_URL=${HA_URL:-ws://homeassistant:8123/api/websocket}
+      - HA_ACCESS_TOKEN=${HA_ACCESS_TOKEN}
+      - AGENT_NAME=${AGENT_NAME:-dumio-agent-dev}
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
+      - RECONNECT_INTERVAL=${RECONNECT_INTERVAL:-5000}
+      - MAX_RECONNECT_ATTEMPTS=${MAX_RECONNECT_ATTEMPTS:-10}
+    volumes:
+      - ./src:/app/src:ro
+      - ./package.json:/app/package.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    networks:
+      - homeassistant
+    env_file:
+      - .env
+
+networks:
+  homeassistant:
+    name: homeassistant
+    external: true

@@ -1,9 +1,33 @@
+import { createServer } from 'http';
 import { loadConfig, validateConfig } from './infrastructure/config/Config.js';
 import { PinoLogger } from './infrastructure/logging/PinoLogger.js';
 import { HomeAssistantClient } from './infrastructure/websocket/HomeAssistantClient.js';
 import { Agent } from './presentation/Agent.js';
+import { HttpServer } from './presentation/HttpServer.js';
 import type { EntityState, HAEventMessage } from './domain/index.js';
 import type { ConnectionState } from './domain/ports/IHomeAssistantClient.js';
+
+const HEALTH_CHECK_PORT = 8099;
+const HTTP_API_PORT = 3000;
+
+/**
+ * Start health check server for Home Assistant watchdog
+ */
+function startHealthCheckServer(logger: ReturnType<typeof PinoLogger.prototype.child>): void {
+  const server = createServer((req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'healthy', timestamp: new Date().toISOString() }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+
+  server.listen(HEALTH_CHECK_PORT, () => {
+    logger.debug('Health check server started', { port: HEALTH_CHECK_PORT });
+  });
+}
 
 /**
  * Main entry point for the Dumio Agent
@@ -22,8 +46,14 @@ async function main(): Promise<void> {
 
   logger.info('Dumio Agent starting', {
     name: config.agent.name,
-    haUrl: config.homeAssistant.url,
+    mode: config.isAddon ? 'Home Assistant Add-on' : 'Standalone',
+    haUrl: config.isAddon ? '(supervisor internal)' : config.homeAssistant.url,
   });
+
+  // Start health check server (for add-on watchdog)
+  if (config.isAddon) {
+    startHealthCheckServer(logger);
+  }
 
   // Initialize Home Assistant client
   const haClient = new HomeAssistantClient(
@@ -65,9 +95,17 @@ async function main(): Promise<void> {
     },
   };
 
+  // Initialize HTTP Server for API access
+  const httpServer = new HttpServer(
+    agent,
+    logger.child({ component: 'HttpServer' }),
+    { port: HTTP_API_PORT }
+  );
+
   // Handle graceful shutdown
   const shutdown = async (): Promise<void> => {
     logger.info('Shutting down...');
+    await httpServer.stop();
     await agent.stop();
     process.exit(0);
   };
@@ -79,15 +117,24 @@ async function main(): Promise<void> {
     // Start the agent
     await agent.start(handlers);
 
-    // Example: List all lights
-    const lights = await agent.getEntitiesByDomain('light');
-    logger.info('Available lights', {
-      count: lights.length,
-      entities: lights.map((l) => l.entity_id),
+    // Start HTTP API server
+    await httpServer.start();
+
+    // Log available entities count
+    const stats = await agent.getDeviceStats();
+    logger.info('Connected to Home Assistant', {
+      totalDevices: stats.total,
+      onlineDevices: stats.online,
+      activeDevices: stats.on,
     });
 
     // Keep the process running
-    logger.info('Agent is running. Press Ctrl+C to stop.');
+    if (config.isAddon) {
+      logger.info('Add-on is running and connected to Home Assistant');
+    } else {
+      logger.info(`Agent is running. API available at http://localhost:${HTTP_API_PORT}`);
+      logger.info('Press Ctrl+C to stop.');
+    }
 
     // The agent will keep running and processing events
     // until SIGINT or SIGTERM is received
@@ -106,8 +153,10 @@ main().catch((error) => {
 
 // Export for programmatic use
 export { Agent } from './presentation/Agent.js';
+export { HttpServer } from './presentation/HttpServer.js';
 export { HomeAssistantClient } from './infrastructure/websocket/HomeAssistantClient.js';
 export { PinoLogger } from './infrastructure/logging/PinoLogger.js';
 export { loadConfig, validateConfig } from './infrastructure/config/Config.js';
+export { DeviceMapper, RoomMapper } from './infrastructure/mappers/index.js';
 export * from './domain/index.js';
 export * from './application/index.js';
