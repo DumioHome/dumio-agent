@@ -2,28 +2,20 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-build-configuration
 
 build_from:
-  amd64: node:20-alpine
-  aarch64: node:20-alpine
-  armv7: node:20-alpine
-  armhf: node:20-alpine
-  i386: node:20-alpine
+  amd64: ghcr.io/hassio-addons/base:15.0.8
+  aarch64: ghcr.io/hassio-addons/base:15.0.8
+  armv7: ghcr.io/hassio-addons/base:15.0.8
 
 squash: false
+
 args:
-  BUILD_ARCH: ${BUILD_ARCH}
-  BUILD_DATE: ${BUILD_DATE}
-  BUILD_REF: ${BUILD_REF}
-  BUILD_VERSION: ${BUILD_VERSION}
+  BUILD_ARCH: "{arch}"
 
 labels:
   org.opencontainers.image.title: "Dumio Agent"
   org.opencontainers.image.description: "Agente inteligente para Home Assistant"
   org.opencontainers.image.vendor: "Dumio"
-  org.opencontainers.image.authors: "Juan Ignacio Melo"
-  org.opencontainers.image.source: "https://github.com/yourusername/dumio-agent"
-  org.opencontainers.image.documentation: "https://github.com/yourusername/dumio-agent/blob/main/DOCS.md"
+  org.opencontainers.image.source: "https://github.com/DumioHome/dumio-agent"
   io.hass.name: "Dumio Agent"
   io.hass.description: "Agente inteligente para Home Assistant"
   io.hass.type: "addon"
-  io.hass.version: ${BUILD_VERSION}
-  io.hass.arch: ${BUILD_ARCH}

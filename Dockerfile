@@ -1,73 +1,45 @@
 # Home Assistant Add-on Dockerfile
-# https://developers.home-assistant.io/docs/add-ons/configuration#add-on-dockerfile
-
-ARG BUILD_FROM
-FROM ${BUILD_FROM:-node:20-alpine}
+ARG BUILD_FROM=ghcr.io/hassio-addons/base:15.0.8
+FROM ${BUILD_FROM}
 
 # Build arguments
-ARG BUILD_ARCH
-ARG BUILD_DATE
-ARG BUILD_REF
-ARG BUILD_VERSION
+ARG BUILD_ARCH=amd64
 
-# Install bashio for Home Assistant integration
+# Install Node.js 20
 RUN apk add --no-cache \
-    bash \
-    curl \
-    jq \
-    && curl -J -L -o /tmp/bashio.tar.gz \
-    "https://github.com/hassio-addons/bashio/archive/v0.16.2.tar.gz" \
-    && mkdir /tmp/bashio \
-    && tar zxvf /tmp/bashio.tar.gz --strip 1 -C /tmp/bashio \
-    && mv /tmp/bashio/lib /usr/lib/bashio \
-    && ln -s /usr/lib/bashio/bashio /usr/bin/bashio \
-    && rm -rf /tmp/bashio.tar.gz /tmp/bashio
-
-# Set shell
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+    nodejs \
+    npm
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files first (for better caching)
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production=false
+# Install ALL dependencies (including dev for build)
+RUN npm install
 
-# Copy source code
+# Copy TypeScript config and source
 COPY tsconfig.json ./
 COPY src ./src
 
-# Build the application
-RUN npm run build \
-    && npm prune --production \
-    && rm -rf src tsconfig.json
+# Build TypeScript
+RUN npm run build
+
+# Remove dev dependencies and source
+RUN npm prune --omit=dev && \
+    rm -rf src tsconfig.json
 
 # Copy run script
 COPY run.sh /
-RUN chmod +x /run.sh
+RUN chmod a+x /run.sh
 
 # Labels
 LABEL \
     io.hass.name="Dumio Agent" \
-    io.hass.description="Agente inteligente para Home Assistant con comunicación WebSocket" \
+    io.hass.description="Agente inteligente para Home Assistant" \
     io.hass.arch="${BUILD_ARCH}" \
     io.hass.type="addon" \
-    io.hass.version="${BUILD_VERSION}" \
-    maintainer="Juan Ignacio Melo" \
-    org.opencontainers.image.title="Dumio Agent" \
-    org.opencontainers.image.description="Agente inteligente para Home Assistant" \
-    org.opencontainers.image.vendor="Dumio" \
-    org.opencontainers.image.authors="Juan Ignacio Melo" \
-    org.opencontainers.image.source="https://github.com/yourusername/dumio-agent" \
-    org.opencontainers.image.created="${BUILD_DATE}" \
-    org.opencontainers.image.revision="${BUILD_REF}" \
-    org.opencontainers.image.version="${BUILD_VERSION}"
+    io.hass.version="1.0.0"
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8099/health || exit 1
-
-# Start the add-on
 CMD ["/run.sh"]
