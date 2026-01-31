@@ -30,6 +30,14 @@ export class HttpServer {
   private server: ReturnType<typeof createServer> | null = null;
   private startTime: number = Date.now();
   private statusProvider: (() => Promise<StatusInfo>) | null = null;
+  
+  // Smart cache - only updates when changes are detected
+  private statusCache: StatusInfo | null = null;
+  private statusCacheTime: number = 0;
+  private cacheInvalidated: boolean = true; // Start invalidated to fetch on first request
+  private lastConnectionState: ConnectionState = 'disconnected';
+  private lastEntityCount: number = 0;
+  private lastDeviceCount: number = 0;
 
   constructor(
     private readonly agent: Agent,
@@ -42,6 +50,78 @@ export class HttpServer {
    */
   setStatusProvider(provider: () => Promise<StatusInfo>): void {
     this.statusProvider = provider;
+  }
+
+  /**
+   * Invalidate cache - call this when something changes
+   */
+  invalidateCache(): void {
+    this.cacheInvalidated = true;
+    this.logger.debug('Status cache invalidated');
+  }
+
+  /**
+   * Notify of connection state change
+   */
+  onConnectionChange(state: ConnectionState): void {
+    if (state !== this.lastConnectionState) {
+      this.lastConnectionState = state;
+      this.invalidateCache();
+      this.logger.info('Connection state changed, cache invalidated', { state });
+    }
+  }
+
+  /**
+   * Notify of entity/device count change (call periodically or on events)
+   */
+  onCountsChange(entityCount: number, deviceCount: number): void {
+    if (entityCount !== this.lastEntityCount || deviceCount !== this.lastDeviceCount) {
+      this.lastEntityCount = entityCount;
+      this.lastDeviceCount = deviceCount;
+      this.invalidateCache();
+      this.logger.debug('Counts changed, cache invalidated', { entityCount, deviceCount });
+    }
+  }
+
+  /**
+   * Get cached status or fetch new one if cache is invalidated
+   */
+  private async getCachedStatus(): Promise<StatusInfo | null> {
+    if (!this.statusProvider) return null;
+
+    // Return cached if not invalidated
+    if (this.statusCache && !this.cacheInvalidated) {
+      const cacheAge = Math.floor((Date.now() - this.statusCacheTime) / 1000);
+      this.logger.debug('Using cached status (no changes detected)', { cacheAgeSeconds: cacheAge });
+      return this.statusCache;
+    }
+
+    // Fetch new status
+    try {
+      this.logger.info('Fetching fresh status (cache was invalidated)');
+      this.statusCache = await this.statusProvider();
+      this.statusCacheTime = Date.now();
+      this.cacheInvalidated = false;
+      
+      // Update tracking values
+      this.lastConnectionState = this.statusCache.websocket.state;
+      this.lastEntityCount = this.statusCache.homeAssistant.entityCount;
+      this.lastDeviceCount = this.statusCache.homeAssistant.deviceCount;
+      
+      return this.statusCache;
+    } catch (error) {
+      this.logger.error('Failed to fetch status', error);
+      // Return stale cache if available
+      return this.statusCache;
+    }
+  }
+
+  /**
+   * Force refresh the status cache
+   */
+  async refreshStatusCache(): Promise<void> {
+    this.invalidateCache();
+    await this.getCachedStatus();
   }
 
   /**
@@ -104,7 +184,8 @@ export class HttpServer {
       }
 
       if (path === '/api/status' && method === 'GET') {
-        return await this.handleStatus(res);
+        const forceRefresh = url.searchParams.get('refresh') === 'true';
+        return await this.handleStatus(res, forceRefresh);
       }
 
       if (path === '/api/devices' && method === 'GET') {
@@ -165,22 +246,16 @@ export class HttpServer {
   }
 
   private async handleHealth(res: ServerResponse): Promise<void> {
-    if (this.statusProvider) {
-      try {
-        const status = await this.statusProvider();
-        const healthy = status.websocket.connected;
-        this.sendJson(res, healthy ? 200 : 503, {
-          status: healthy ? 'healthy' : 'unhealthy',
-          timestamp: new Date().toISOString(),
-          websocket: status.websocket.state,
-          uptime: status.uptime,
-        });
-      } catch {
-        this.sendJson(res, 200, {
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
-        });
-      }
+    const status = await this.getCachedStatus();
+    
+    if (status) {
+      const healthy = status.websocket.connected;
+      this.sendJson(res, healthy ? 200 : 503, {
+        status: healthy ? 'healthy' : 'unhealthy',
+        timestamp: new Date().toISOString(),
+        websocket: status.websocket.state,
+        uptime: status.uptime,
+      });
     } else {
       this.sendJson(res, 200, {
         status: 'healthy',
@@ -189,12 +264,27 @@ export class HttpServer {
     }
   }
 
-  private async handleStatus(res: ServerResponse): Promise<void> {
-    if (this.statusProvider) {
-      const status = await this.statusProvider();
+  private async handleStatus(res: ServerResponse, forceRefresh: boolean = false): Promise<void> {
+    // Force refresh if requested
+    if (forceRefresh) {
+      this.logger.info('Forcing status cache refresh');
+      this.invalidateCache();
+    }
+
+    const status = await this.getCachedStatus();
+    
+    if (status) {
+      const cacheAge = Math.floor((Date.now() - this.statusCacheTime) / 1000);
       this.sendJson(res, 200, {
         ...status,
         timestamp: new Date().toISOString(),
+        cache: {
+          type: 'smart',
+          description: 'Updates only when changes are detected',
+          ageSeconds: cacheAge,
+          invalidated: this.cacheInvalidated,
+          wasRefreshed: forceRefresh,
+        },
       });
     } else {
       this.sendJson(res, 200, {

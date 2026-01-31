@@ -85,25 +85,6 @@ async function main(): Promise<void> {
     }
   );
 
-  // Event handlers
-  const handlers = {
-    onStateChange: (entityId: string, _oldState: EntityState | null, newState: EntityState): void => {
-      logger.debug('State changed', {
-        entityId,
-        state: newState.state,
-        attributes: Object.keys(newState.attributes),
-      });
-    },
-    onEvent: (event: HAEventMessage): void => {
-      logger.trace('Event received', {
-        eventType: event.event.event_type,
-      });
-    },
-    onConnectionChange: (state: ConnectionState): void => {
-      logger.info('Connection state changed', { state });
-    },
-  };
-
   // Initialize HTTP Server for API access
   const httpServer = new HttpServer(
     agent,
@@ -111,7 +92,7 @@ async function main(): Promise<void> {
     { port: HTTP_API_PORT }
   );
 
-  // Configure status provider for HTTP endpoints
+  // Configure status provider for HTTP endpoints (smart cache - only fetches when invalidated)
   httpServer.setStatusProvider(async () => {
     const stats = await agent.getDeviceStats();
     const entities = await agent.getState();
@@ -129,6 +110,45 @@ async function main(): Promise<void> {
       },
     };
   });
+
+  // Event handlers - notify httpServer of changes to invalidate cache
+  const handlers = {
+    onStateChange: (entityId: string, _oldState: EntityState | null, newState: EntityState): void => {
+      logger.debug('State changed', {
+        entityId,
+        state: newState.state,
+        attributes: Object.keys(newState.attributes),
+      });
+      // Don't invalidate on every state change (too frequent)
+      // Only invalidate on significant changes like device added/removed
+    },
+    onEvent: (event: HAEventMessage): void => {
+      logger.trace('Event received', {
+        eventType: event.event.event_type,
+      });
+      
+      // Invalidate cache on significant events
+      const significantEvents = [
+        'device_registry_updated',
+        'entity_registry_updated', 
+        'area_registry_updated',
+        'homeassistant_start',
+        'homeassistant_stop',
+      ];
+      
+      if (significantEvents.includes(event.event.event_type)) {
+        logger.info('Significant event detected, invalidating cache', { 
+          eventType: event.event.event_type 
+        });
+        httpServer.invalidateCache();
+      }
+    },
+    onConnectionChange: (state: ConnectionState): void => {
+      logger.info('Connection state changed', { state });
+      // Notify httpServer to invalidate cache on connection change
+      httpServer.onConnectionChange(state);
+    },
+  };
 
   // Initialize Cloud Client (if configured)
   let cloudClient: CloudClient | null = null;
