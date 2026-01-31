@@ -2,7 +2,7 @@
 # https://developers.home-assistant.io/docs/add-ons/configuration
 
 name: "Dumio Agent"
-description: "Agente inteligente para Home Assistant con comunicación WebSocket"
+description: "Agente inteligente para Home Assistant con comunicación WebSocket y soporte cloud"
 version: "1.0.0"
 slug: "dumio_agent"
 url: "https://github.com/DumioHome/dumio-agent"
@@ -11,10 +11,13 @@ url: "https://github.com/DumioHome/dumio-agent"
 # Format: repository/image-{arch}:version
 image: "juaniimelodev/dumio-agent-{arch}"
 
+# Supported architectures
 arch:
   - amd64
   - aarch64
   - armv7
+
+# System configuration
 init: false
 homeassistant_api: true
 hassio_api: true
@@ -24,6 +27,16 @@ auth_api: true
 startup: services
 boot: auto
 
+# Watchdog - restart addon if it crashes or becomes unresponsive
+watchdog: "http://[HOST]:[PORT:8099]/health"
+
+# Ingress - enables web access through Home Assistant UI
+ingress: true
+ingress_port: 3000
+ingress_stream: false
+panel_icon: "mdi:robot"
+panel_title: "Dumio Agent"
+
 # Options available to the user
 options:
   log_level: info
@@ -31,6 +44,7 @@ options:
   max_reconnect_attempts: 10
   cloud_socket_url: ""
   cloud_api_key: ""
+  enable_api: true
 
 # Schema for options validation
 schema:
@@ -38,19 +52,28 @@ schema:
   reconnect_interval: int(1000,60000)
   max_reconnect_attempts: int(1,100)
   cloud_socket_url: str?
-  cloud_api_key: str?
+  cloud_api_key: password?
+  enable_api: bool
 
-# Ports (for API access)
+# Ports (for API access - optional external access)
 ports:
-  "3000/tcp": 3000
+  "3000/tcp": null
 ports_description:
-  "3000/tcp": "API REST"
+  "3000/tcp": "API REST (opcional, usar ingress preferentemente)"
 
 # Map configuration
 map:
   - config:rw
+  - ssl:ro
+
+# Tmpfs for temporary files (better performance)
+tmpfs: true
 
 # Privileges
 privileged: []
 full_access: false
 host_network: false
+
+# Labels
+labels:
+  io.hass.type: addon
