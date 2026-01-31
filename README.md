@@ -1,17 +1,50 @@
 # Dumio Agent
 
-Agente para Home Assistant que utiliza WebSocket para comunicación en tiempo real. Implementado con Clean Architecture en Node.js/TypeScript.
+[![Build and Publish](https://github.com/DumioHome/dumio-agent/actions/workflows/build-and-publish.yml/badge.svg)](https://github.com/DumioHome/dumio-agent/actions/workflows/build-and-publish.yml)
+[![License: AGPL](https://img.shields.io/badge/License-AGPL-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
+Agente inteligente para Home Assistant que utiliza WebSocket para comunicación en tiempo real. Implementado con Clean Architecture en Node.js/TypeScript.
+
+## Modos de Operación
+
+| Modo | Descripción | Autenticación |
+|------|-------------|---------------|
+| **Add-on HA** | Integración nativa con Home Assistant | Automática (Supervisor Token) |
+| **Standalone** | Ejecución independiente | Token manual (.env) |
+| **Docker** | Contenedor pre-construido | Token manual (env vars) |
 
 ## Características
 
 - Conexión WebSocket con Home Assistant
-- Reconexión automática
+- Reconexión automática con backoff exponencial
 - Suscripción a eventos y cambios de estado
 - Llamadas a servicios
-- API de conversación para comandos de voz/texto
+- API REST para integración externa
+- Conexión opcional a Dumio Cloud
 - Clean Architecture (Domain, Application, Infrastructure, Presentation)
 - Tests unitarios con Vitest
 - Logging estructurado con Pino
+- Watchdog para reinicio automático
+- Multi-arquitectura: amd64, aarch64, armv7
+
+## Instalación Rápida como Add-on de Home Assistant
+
+### Paso 1: Agregar el repositorio
+
+1. Ve a **Configuración** > **Add-ons** > **Tienda de Add-ons**
+2. Haz clic en los tres puntos (⋮) > **Repositorios**
+3. Añade: `https://github.com/DumioHome/dumio-agent`
+
+### Paso 2: Instalar y configurar
+
+1. Busca "Dumio Agent" en la tienda
+2. Haz clic en **Instalar**
+3. Configura las opciones (cloud es opcional)
+4. Haz clic en **Iniciar**
+
+Para documentación completa del addon, ver [DOCS.md](DOCS.md).
+
+---
 
 ## Estructura del Proyecto
 
@@ -313,6 +346,23 @@ docker-compose logs -f dumio-agent
 
 # Detener
 docker-compose down
+
+# Up
+docker run -d \
+  --name dumio-agent \
+  --restart unless-stopped \
+  --network host \
+  -e HA_URL=ws://localhost:8123/api/websocket \
+  -e HA_ACCESS_TOKEN=PEGA_ACA_TU_TOKEN_DE_HA \
+  -e AGENT_NAME=dumio-agent \
+  -e LOG_LEVEL=info \
+  -e RECONNECT_INTERVAL=5000 \
+  -e MAX_RECONNECT_ATTEMPTS=10 \
+  -e CLOUD_SOCKET_URL= \
+  -e CLOUD_API_KEY= \
+  juaniimelodev/dumio-agent-amd64:latest
+
+
 ```
 
 ### Configuración de red

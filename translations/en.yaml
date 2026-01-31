@@ -19,10 +19,15 @@ configuration:
   cloud_socket_url:
     name: Cloud Socket URL
     description: >-
-      URL of the cloud server to connect to (e.g., https://cloud.dumio.io/agent).
+      URL of the cloud server to connect to (e.g., wss://cloud.dumio.io/agent).
       Leave empty to disable cloud connection.
   cloud_api_key:
     name: Cloud API Key
     description: >-
       API key for authenticating with the cloud server.
       Required if Cloud Socket URL is configured.
+  enable_api:
+    name: Enable REST API
+    description: >-
+      Enable the REST API for external integrations.
+      The API is accessible through Home Assistant's ingress.

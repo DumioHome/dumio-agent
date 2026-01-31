@@ -1,22 +1,30 @@
 # Build configuration for Home Assistant Add-on
 # https://developers.home-assistant.io/docs/add-ons/configuration#add-on-build-configuration
 
-# Use pre-built images from Docker Hub (faster install)
+# Base images for each architecture
 build_from:
   amd64: ghcr.io/hassio-addons/base:15.0.8
   aarch64: ghcr.io/hassio-addons/base:15.0.8
   armv7: ghcr.io/hassio-addons/base:15.0.8
 
+# Don't squash layers (better for debugging)
 squash: false
 
+# Build arguments
 args:
   BUILD_ARCH: "{arch}"
+  BUILD_DATE: "{date}"
+  BUILD_VERSION: "{version}"
 
+# Container labels
 labels:
   org.opencontainers.image.title: "Dumio Agent"
-  org.opencontainers.image.description: "Agente inteligente para Home Assistant"
+  org.opencontainers.image.description: "Agente inteligente para Home Assistant con soporte cloud"
   org.opencontainers.image.vendor: "DumioHome"
+  org.opencontainers.image.authors: "Juan Ignacio Melo"
+  org.opencontainers.image.licenses: "AGPL-3.0"
   org.opencontainers.image.source: "https://github.com/DumioHome/dumio-agent"
+  org.opencontainers.image.documentation: "https://github.com/DumioHome/dumio-agent/blob/main/DOCS.md"
   io.hass.name: "Dumio Agent"
-  io.hass.description: "Agente inteligente para Home Assistant"
+  io.hass.description: "Agente inteligente para Home Assistant con soporte cloud"
   io.hass.type: "addon"
