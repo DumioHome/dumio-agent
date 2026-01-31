@@ -1,12 +1,24 @@
 import type { IHomeAssistantClient, ConnectionState } from '../domain/ports/IHomeAssistantClient.js';
 import type { ILogger } from '../domain/ports/ILogger.js';
-import type { EntityState, HAEventMessage } from '../domain/index.js';
+import type {
+  EntityState,
+  HAEventMessage,
+  Device,
+  DeviceSummary,
+  DeviceFilter,
+  DeviceType,
+  Room,
+  RoomWithDevices,
+  HomeOverview,
+} from '../domain/index.js';
 import {
   ConnectToHomeAssistant,
   CallService,
   GetEntityState,
   ProcessConversation,
   SubscribeToEvents,
+  GetDevices,
+  GetRooms,
 } from '../application/index.js';
 
 export interface AgentConfig {
@@ -30,6 +42,8 @@ export class Agent {
   private getEntityStateUseCase: GetEntityState;
   private processConversationUseCase: ProcessConversation;
   private subscribeToEventsUseCase: SubscribeToEvents;
+  private getDevicesUseCase: GetDevices;
+  private getRoomsUseCase: GetRooms;
   private eventSubscription?: { unsubscribe: () => Promise<void> };
 
   constructor(
@@ -43,6 +57,8 @@ export class Agent {
     this.getEntityStateUseCase = new GetEntityState(haClient, logger);
     this.processConversationUseCase = new ProcessConversation(haClient, logger);
     this.subscribeToEventsUseCase = new SubscribeToEvents(haClient, logger);
+    this.getDevicesUseCase = new GetDevices(haClient, logger);
+    this.getRoomsUseCase = new GetRooms(haClient, logger);
 
     this.logger.info('Agent initialized', { name: config.name });
   }
@@ -204,5 +220,127 @@ export class Agent {
    */
   async activateScene(entityId: string): Promise<void> {
     await this.callService('scene', 'turn_on', entityId);
+  }
+
+  // ============================================================
+  // Mapped Data Methods - Returns data ready for database
+  // ============================================================
+
+  /**
+   * Get all devices mapped to readable format
+   */
+  async getDevices(filter?: DeviceFilter): Promise<DeviceSummary[]> {
+    const result = await this.getDevicesUseCase.execute({ filter });
+    return result.devices as DeviceSummary[];
+  }
+
+  /**
+   * Get all devices with full details
+   */
+  async getDevicesWithDetails(filter?: DeviceFilter): Promise<Device[]> {
+    const result = await this.getDevicesUseCase.execute({
+      filter,
+      includeFullDetails: true,
+    });
+    return result.devices as Device[];
+  }
+
+  /**
+   * Get devices by type (light, switch, sensor, etc.)
+   */
+  async getDevicesByType(type: DeviceType): Promise<DeviceSummary[]> {
+    return this.getDevices({ type });
+  }
+
+  /**
+   * Get devices by room
+   */
+  async getDevicesByRoom(roomId: string): Promise<DeviceSummary[]> {
+    return this.getDevices({ roomId });
+  }
+
+  /**
+   * Get online devices only
+   */
+  async getOnlineDevices(): Promise<DeviceSummary[]> {
+    return this.getDevices({ isOnline: true });
+  }
+
+  /**
+   * Get devices that are currently on
+   */
+  async getActiveDevices(): Promise<DeviceSummary[]> {
+    return this.getDevices({ isOn: true });
+  }
+
+  /**
+   * Search devices by name
+   */
+  async searchDevices(query: string): Promise<DeviceSummary[]> {
+    return this.getDevices({ search: query });
+  }
+
+  /**
+   * Get device stats
+   */
+  async getDeviceStats(): Promise<{ total: number; online: number; on: number }> {
+    const result = await this.getDevicesUseCase.execute({});
+    return {
+      total: result.count,
+      online: result.onlineCount,
+      on: result.onCount,
+    };
+  }
+
+  /**
+   * Get all rooms mapped to readable format
+   */
+  async getRooms(): Promise<Room[]> {
+    const result = await this.getRoomsUseCase.execute({});
+    return result.rooms as Room[];
+  }
+
+  /**
+   * Get all rooms with their devices
+   */
+  async getRoomsWithDevices(): Promise<RoomWithDevices[]> {
+    const result = await this.getRoomsUseCase.execute({ includeDevices: true });
+    return result.rooms as RoomWithDevices[];
+  }
+
+  /**
+   * Get a specific room with its devices
+   */
+  async getRoom(roomId: string): Promise<RoomWithDevices | null> {
+    return this.getRoomsUseCase.getRoomWithDevices(roomId);
+  }
+
+  /**
+   * Get complete home overview with floors, rooms, and stats
+   */
+  async getHomeOverview(): Promise<HomeOverview> {
+    const result = await this.getRoomsUseCase.getHomeOverview();
+    return result.overview;
+  }
+
+  /**
+   * Get all data for database sync (devices + rooms + overview)
+   */
+  async getAllMappedData(): Promise<{
+    devices: Device[];
+    rooms: Room[];
+    overview: HomeOverview;
+  }> {
+    const [devicesResult, roomsResult, overviewResult] = await Promise.all([
+      this.getDevicesUseCase.execute({ includeFullDetails: true }),
+      this.getRoomsUseCase.execute({}),
+      this.getRoomsUseCase.getHomeOverview(),
+    ]);
+
+    return {
+      devices: devicesResult.devices as Device[],
+      rooms: roomsResult.rooms as Room[],
+      overview: overviewResult.overview,
+    };
   }
 }

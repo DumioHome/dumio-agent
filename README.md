@@ -206,6 +206,144 @@ El proyecto implementa los siguientes casos de uso:
 - **ProcessConversation**: Procesa comandos de voz/texto
 - **SubscribeToEvents**: Suscribe a eventos en tiempo real
 
+## Home Assistant Add-on
+
+Este proyecto está preparado para instalarse como add-on nativo de Home Assistant.
+
+### Instalación del Add-on
+
+1. Ve a **Configuración** > **Add-ons** > **Tienda de Add-ons**
+2. Haz clic en los tres puntos (⋮) en la esquina superior derecha
+3. Selecciona **Repositorios**
+4. Añade la URL del repositorio:
+   ```
+   https://github.com/yourusername/dumio-agent
+   ```
+5. Busca "Dumio Agent" en la tienda
+6. Haz clic en **Instalar**
+7. Configura las opciones según necesites
+8. Haz clic en **Iniciar**
+
+### Configuración del Add-on
+
+Las opciones disponibles en la configuración del add-on:
+
+```yaml
+log_level: info           # trace, debug, info, warn, error, fatal
+reconnect_interval: 5000  # ms entre intentos de reconexión
+max_reconnect_attempts: 10
+```
+
+### Ventajas del Add-on
+
+- **Autenticación automática**: Usa el token del Supervisor, no necesitas configurar credenciales
+- **Integración nativa**: Se gestiona desde la UI de Home Assistant
+- **Actualizaciones**: Recibe actualizaciones automáticas
+- **Logs integrados**: Ve los logs directamente en la interfaz de Home Assistant
+- **Watchdog**: Se reinicia automáticamente si falla
+
+### Estructura del Add-on
+
+```
+dumio-agent/
+├── config.yaml       # Configuración del add-on
+├── build.yaml        # Configuración de build multi-arch
+├── Dockerfile        # Dockerfile optimizado para HA
+├── run.sh            # Script de inicio con bashio
+├── DOCS.md           # Documentación del add-on
+├── CHANGELOG.md      # Historial de cambios
+├── translations/     # Traducciones
+│   ├── en.yaml
+│   └── es.yaml
+└── src/              # Código fuente
+```
+
+### Arquitecturas soportadas
+
+- amd64 (x86_64)
+- aarch64 (ARM64, Raspberry Pi 4)
+- armv7 (ARM32, Raspberry Pi 3)
+- armhf (ARM hard float)
+- i386 (x86 32-bit)
+
+## Docker (Standalone)
+
+### Construcción de la imagen
+
+```bash
+# Construir imagen de producción
+docker build -t dumio-agent .
+
+# Construir imagen de desarrollo
+docker build -f Dockerfile.dev -t dumio-agent:dev .
+```
+
+### Ejecutar con Docker
+
+```bash
+# Ejecutar directamente con Docker
+docker run -d \
+  --name dumio-agent \
+  --restart unless-stopped \
+  -e HA_URL=ws://homeassistant.local:8123/api/websocket \
+  -e HA_ACCESS_TOKEN=your_token_here \
+  -e LOG_LEVEL=info \
+  --network homeassistant \
+  dumio-agent
+```
+
+### Ejecutar con Docker Compose
+
+```bash
+# Configurar variables de entorno
+cp .env.example .env
+# Editar .env con tus credenciales
+
+# Crear la red si no existe
+docker network create homeassistant
+
+# Ejecutar en producción
+docker-compose up -d dumio-agent
+
+# Ejecutar en desarrollo (con hot reload)
+docker-compose --profile dev up dumio-agent-dev
+
+# Ver logs
+docker-compose logs -f dumio-agent
+
+# Detener
+docker-compose down
+```
+
+### Configuración de red
+
+Si Home Assistant está en Docker, asegúrate de que ambos contenedores estén en la misma red:
+
+```yaml
+# En tu docker-compose de Home Assistant, añade:
+networks:
+  homeassistant:
+    name: homeassistant
+```
+
+Si Home Assistant está en el host, usa la URL del host:
+
+```env
+# Linux
+HA_URL=ws://host.docker.internal:8123/api/websocket
+
+# O usa la IP del host
+HA_URL=ws://192.168.1.100:8123/api/websocket
+```
+
+### Recursos y límites
+
+El contenedor está configurado con límites de recursos por defecto:
+- CPU: máximo 0.5 cores
+- Memoria: máximo 256MB
+
+Puedes ajustar estos valores en `docker-compose.yml`.
+
 ## Integración con Home Assistant
 
 Este agente puede integrarse con Home Assistant de varias formas:
@@ -213,6 +351,7 @@ Este agente puede integrarse con Home Assistant de varias formas:
 1. **Como servicio standalone**: Ejecuta comandos y reacciona a eventos
 2. **Como bridge**: Conecta otros servicios con Home Assistant
 3. **Como agente de conversación**: Procesa comandos de voz/texto
+4. **Como contenedor Docker**: Despliega junto a Home Assistant en Docker
 
 ## Licencia
 

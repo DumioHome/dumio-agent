@@ -1,0 +1,6 @@
+# Home Assistant Add-on Repository Configuration
+# https://developers.home-assistant.io/docs/add-ons/repository
+
+name: Dumio Add-ons
+url: https://github.com/DumioHome/dumio-agent.git
+maintainer: Juan Ignacio Melo

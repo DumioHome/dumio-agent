@@ -1,7 +1,8 @@
 import dotenv from 'dotenv';
+import { readFileSync, existsSync } from 'fs';
 import type { LogLevel } from '../../domain/ports/ILogger.js';
 
-// Load environment variables
+// Load environment variables (for standalone mode)
 dotenv.config();
 
 export interface AppConfig {
@@ -20,6 +21,30 @@ export interface AppConfig {
     interval: number;
     maxAttempts: number;
   };
+  isAddon: boolean;
+}
+
+/**
+ * Check if running as Home Assistant Add-on
+ */
+function isHomeAssistantAddon(): boolean {
+  return existsSync('/data/options.json') || !!process.env.SUPERVISOR_TOKEN;
+}
+
+/**
+ * Load add-on options from Home Assistant Supervisor
+ */
+function loadAddonOptions(): Record<string, unknown> {
+  const optionsPath = '/data/options.json';
+  if (existsSync(optionsPath)) {
+    try {
+      const content = readFileSync(optionsPath, 'utf-8');
+      return JSON.parse(content);
+    } catch {
+      return {};
+    }
+  }
+  return {};
 }
 
 function getEnvOrThrow(key: string): string {
@@ -42,9 +67,38 @@ function getEnvNumber(key: string, defaultValue: number): number {
 }
 
 /**
- * Load configuration from environment variables
+ * Load configuration - supports both add-on and standalone modes
  */
 export function loadConfig(): AppConfig {
+  const isAddon = isHomeAssistantAddon();
+
+  if (isAddon) {
+    // Running as Home Assistant Add-on
+    const options = loadAddonOptions();
+    const supervisorToken = process.env.SUPERVISOR_TOKEN ?? '';
+
+    return {
+      homeAssistant: {
+        // Use internal Supervisor WebSocket URL
+        url: process.env.HA_URL ?? 'ws://supervisor/core/websocket',
+        accessToken: supervisorToken,
+      },
+      agent: {
+        name: getEnvOrDefault('AGENT_NAME', 'dumio-agent'),
+      },
+      logging: {
+        level: (options.log_level as LogLevel) ?? getEnvOrDefault('LOG_LEVEL', 'info') as LogLevel,
+        pretty: false, // Structured logging for add-on
+      },
+      reconnection: {
+        interval: (options.reconnect_interval as number) ?? getEnvNumber('RECONNECT_INTERVAL', 5000),
+        maxAttempts: (options.max_reconnect_attempts as number) ?? getEnvNumber('MAX_RECONNECT_ATTEMPTS', 10),
+      },
+      isAddon: true,
+    };
+  }
+
+  // Standalone mode
   return {
     homeAssistant: {
       url: getEnvOrThrow('HA_URL'),
@@ -61,6 +115,7 @@ export function loadConfig(): AppConfig {
       interval: getEnvNumber('RECONNECT_INTERVAL', 5000),
       maxAttempts: getEnvNumber('MAX_RECONNECT_ATTEMPTS', 10),
     },
+    isAddon: false,
   };
 }
 
@@ -68,11 +123,19 @@ export function loadConfig(): AppConfig {
  * Validate configuration
  */
 export function validateConfig(config: AppConfig): void {
-  if (!config.homeAssistant.url.startsWith('ws://') && !config.homeAssistant.url.startsWith('wss://')) {
-    throw new Error('HA_URL must start with ws:// or wss://');
+  // Skip URL validation for add-on mode (uses internal supervisor URL)
+  if (!config.isAddon) {
+    if (!config.homeAssistant.url.startsWith('ws://') && !config.homeAssistant.url.startsWith('wss://')) {
+      throw new Error('HA_URL must start with ws:// or wss://');
+    }
+
+    if (config.homeAssistant.accessToken.length < 10) {
+      throw new Error('HA_ACCESS_TOKEN seems too short. Please provide a valid long-lived access token.');
+    }
   }
 
-  if (config.homeAssistant.accessToken.length < 10) {
-    throw new Error('HA_ACCESS_TOKEN seems too short. Please provide a valid long-lived access token.');
+  // Validate that we have a token in add-on mode
+  if (config.isAddon && !config.homeAssistant.accessToken) {
+    throw new Error('SUPERVISOR_TOKEN not available. Make sure the add-on has homeassistant_api: true');
   }
 }

@@ -1,0 +1,18 @@
+# Traducciones en español para Dumio Agent Add-on
+---
+configuration:
+  log_level:
+    name: Nivel de Log
+    description: >-
+      El nivel de logging a utilizar. Niveles más altos incluyen más detalle.
+      Usa 'debug' o 'trace' para solucionar problemas.
+  reconnect_interval:
+    name: Intervalo de Reconexión
+    description: >-
+      Tiempo en milisegundos a esperar antes de intentar reconectar
+      después de una pérdida de conexión.
+  max_reconnect_attempts:
+    name: Máximo de Intentos de Reconexión
+    description: >-
+      Número máximo de intentos de reconexión antes de abandonar.
+      Configura un valor más alto para redes inestables.

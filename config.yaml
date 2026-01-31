@@ -1,0 +1,61 @@
+# Home Assistant Add-on Configuration
+# https://developers.home-assistant.io/docs/add-ons/configuration
+
+name: "Dumio Agent"
+description: "Agente inteligente para Home Assistant con comunicación WebSocket"
+version: "1.0.0"
+slug: "dumio_agent"
+url: "https://github.com/yourusername/dumio-agent"
+arch:
+  - amd64
+  - aarch64
+  - armv7
+  - armhf
+  - i386
+init: false
+homeassistant_api: true
+hassio_api: true
+
+# Startup configuration
+startup: services
+boot: auto
+
+# Options available to the user
+options:
+  log_level: info
+  reconnect_interval: 5000
+  max_reconnect_attempts: 10
+
+# Schema for options validation
+schema:
+  log_level: list(trace|debug|info|warn|error|fatal)
+  reconnect_interval: int(1000,60000)
+  max_reconnect_attempts: int(1,100)
+
+# Environment variables
+environment:
+  LOG_LEVEL: "info"
+
+# Map configuration
+map:
+  - config:rw
+
+# Watchdog for automatic restart
+watchdog: "tcp://[HOST]:[PORT:8099]"
+
+# Panel integration (optional)
+panel_icon: "mdi:robot"
+panel_title: "Dumio Agent"
+
+# Ingress configuration (optional web UI)
+ingress: false
+
+# Privileges
+privileged: []
+full_access: false
+
+# Host network for WebSocket communication
+host_network: false
+
+# Labels
+image: "ghcr.io/yourusername/dumio-agent-{arch}"
