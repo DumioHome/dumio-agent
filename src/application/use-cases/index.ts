@@ -5,3 +5,4 @@ export * from './ProcessConversation.js';
 export * from './SubscribeToEvents.js';
 export * from './GetDevices.js';
 export * from './GetRooms.js';
+export * from './SyncDevicesToCloud.js';

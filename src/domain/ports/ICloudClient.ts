@@ -1,3 +1,5 @@
+import type { DevicesSyncPayload, DevicesSyncCallbackResponse } from '../entities/CloudDevice.js';
+
 /**
  * Cloud connection state
  */
@@ -29,7 +31,7 @@ export interface AgentHealthData {
 }
 
 /**
- * Cloud event types
+ * Cloud event types (events received FROM cloud)
  */
 export interface CloudEventMap {
   'health:request': void;
@@ -39,13 +41,23 @@ export interface CloudEventMap {
 }
 
 /**
- * Cloud response types
+ * Cloud response types (events sent TO cloud)
  */
 export interface CloudResponseMap {
   'health:update': AgentHealthData;
   'devices:response': unknown[];
   'rooms:response': unknown[];
   'command:result': { success: boolean; message: string; data?: unknown };
+}
+
+/**
+ * Cloud emit with callback types
+ */
+export interface CloudEmitWithCallbackMap {
+  'devices:sync': {
+    payload: DevicesSyncPayload;
+    response: DevicesSyncCallbackResponse;
+  };
 }
 
 /**
@@ -76,6 +88,15 @@ export interface ICloudClient {
    * Send a generic event to the cloud
    */
   emit<K extends keyof CloudResponseMap>(event: K, data: CloudResponseMap[K]): void;
+
+  /**
+   * Send an event with callback to receive response from cloud
+   */
+  emitWithCallback<K extends keyof CloudEmitWithCallbackMap>(
+    event: K,
+    data: CloudEmitWithCallbackMap[K]['payload'],
+    timeout?: number
+  ): Promise<CloudEmitWithCallbackMap[K]['response']>;
 
   /**
    * Register handler for incoming cloud events

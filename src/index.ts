@@ -75,13 +75,27 @@ async function main(): Promise<void> {
     logger.child({ component: 'HomeAssistantClient' })
   );
 
-  // Initialize Agent
+  // Initialize Cloud Client (if configured) - before Agent so we can pass it
+  let cloudClient: CloudClient | null = null;
+  if (config.cloud.enabled) {
+    cloudClient = new CloudClient(
+      {
+        socketUrl: config.cloud.socketUrl,
+        apiKey: config.cloud.apiKey,
+        agentId: config.agent.name,
+      },
+      logger.child({ component: 'CloudClient' })
+    );
+  }
+
+  // Initialize Agent with optional cloud client
   const agent = new Agent(
     haClient,
     logger.child({ component: 'Agent' }),
     {
       name: config.agent.name,
       subscribeOnConnect: true,
+      cloudClient: cloudClient ?? undefined,
     }
   );
 
@@ -149,19 +163,6 @@ async function main(): Promise<void> {
       httpServer.onConnectionChange(state);
     },
   };
-
-  // Initialize Cloud Client (if configured)
-  let cloudClient: CloudClient | null = null;
-  if (config.cloud.enabled) {
-    cloudClient = new CloudClient(
-      {
-        socketUrl: config.cloud.socketUrl,
-        apiKey: config.cloud.apiKey,
-        agentId: config.agent.name,
-      },
-      logger.child({ component: 'CloudClient' })
-    );
-  }
 
   // Generate persistent device ID
   const dumioDeviceId = getDumioDeviceId(config.isAddon);

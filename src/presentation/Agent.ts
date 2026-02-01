@@ -1,4 +1,5 @@
 import type { IHomeAssistantClient, ConnectionState } from '../domain/ports/IHomeAssistantClient.js';
+import type { ICloudClient } from '../domain/ports/ICloudClient.js';
 import type { ILogger } from '../domain/ports/ILogger.js';
 import type {
   EntityState,
@@ -19,12 +20,14 @@ import {
   SubscribeToEvents,
   GetDevices,
   GetRooms,
+  SyncDevicesToCloud,
 } from '../application/index.js';
 
 export interface AgentConfig {
   name: string;
   autoReconnect?: boolean;
   subscribeOnConnect?: boolean;
+  cloudClient?: ICloudClient;
 }
 
 export interface AgentEventHandlers {
@@ -341,6 +344,42 @@ export class Agent {
       devices: devicesResult.devices as Device[],
       rooms: roomsResult.rooms as Room[],
       overview: overviewResult.overview,
+    };
+  }
+
+  // ============================================================
+  // Cloud Sync Methods
+  // ============================================================
+
+  /**
+   * Sync devices to cloud
+   * Fetches devices from HA, transforms them to cloud format, and emits to cloud
+   */
+  async syncDevicesToCloud(homeId: string): Promise<{
+    success: boolean;
+    syncedDevices: number;
+    error?: string;
+  }> {
+    if (!this.config.cloudClient) {
+      return {
+        success: false,
+        syncedDevices: 0,
+        error: 'Cloud client not configured',
+      };
+    }
+
+    const syncUseCase = new SyncDevicesToCloud(
+      this.haClient,
+      this.config.cloudClient,
+      this.logger
+    );
+
+    const result = await syncUseCase.execute({ homeId });
+
+    return {
+      success: result.success,
+      syncedDevices: result.syncedDevices,
+      error: result.error,
     };
   }
 }

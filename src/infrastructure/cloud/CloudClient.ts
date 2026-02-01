@@ -5,6 +5,7 @@ import type {
   AgentHealthData,
   CloudEventMap,
   CloudResponseMap,
+  CloudEmitWithCallbackMap,
 } from '../../domain/ports/ICloudClient.js';
 import type { ILogger } from '../../domain/ports/ILogger.js';
 
@@ -182,6 +183,32 @@ export class CloudClient implements ICloudClient {
 
     this.socket.emit(event, data);
     this.logger.debug('Event emitted to cloud', { event });
+  }
+
+  emitWithCallback<K extends keyof CloudEmitWithCallbackMap>(
+    event: K,
+    data: CloudEmitWithCallbackMap[K]['payload'],
+    timeout: number = 30000
+  ): Promise<CloudEmitWithCallbackMap[K]['response']> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket?.connected) {
+        this.logger.debug('Cannot emit with callback: not connected to cloud', { event });
+        reject(new Error('Not connected to cloud'));
+        return;
+      }
+
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Timeout waiting for response to ${event}`));
+      }, timeout);
+
+      this.socket.emit(event, data, (response: CloudEmitWithCallbackMap[K]['response']) => {
+        clearTimeout(timeoutId);
+        this.logger.debug('Received callback response from cloud', { event, success: response?.success });
+        resolve(response);
+      });
+
+      this.logger.debug('Event emitted to cloud with callback', { event });
+    });
   }
 
   on<K extends keyof CloudEventMap>(event: K, handler: (data: CloudEventMap[K]) => void): void {

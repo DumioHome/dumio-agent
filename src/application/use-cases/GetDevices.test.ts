@@ -63,8 +63,10 @@ describe('GetDevices', () => {
         if (type === 'config/device_registry/list') {
           return Promise.resolve({
             result: [
-              { id: 'device1', name: 'Living Room Light', area_id: 'living_room' },
-              { id: 'device2', name: 'Bedroom Light', area_id: 'bedroom' },
+              { id: 'device1', name: 'Living Room Light', area_id: 'living_room', identifiers: [['tuya', 'abc123']] },
+              { id: 'device2', name: 'Bedroom Light', area_id: 'bedroom', identifiers: [['tuya', 'def456']] },
+              { id: 'device3', name: 'Temperature Sensor', area_id: 'living_room', identifiers: [['xiaomi_miio', 'ghi789']] },
+              { id: 'device4', name: 'Fan Switch', area_id: 'bedroom', identifiers: [['shelly', 'jkl012']] },
             ],
           });
         }
@@ -81,8 +83,8 @@ describe('GetDevices', () => {
             result: [
               { entity_id: 'light.living_room', device_id: 'device1', area_id: 'living_room' },
               { entity_id: 'light.bedroom', device_id: 'device2', area_id: 'bedroom' },
-              { entity_id: 'sensor.temperature', area_id: 'living_room' },
-              { entity_id: 'switch.fan', area_id: 'bedroom' },
+              { entity_id: 'sensor.temperature', device_id: 'device3', area_id: 'living_room' },
+              { entity_id: 'switch.fan', device_id: 'device4', area_id: 'bedroom' },
             ],
           });
         }
