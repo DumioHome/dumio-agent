@@ -143,7 +143,7 @@ export class SyncDevicesToCloud {
   /**
    * Create a CloudDevice from multiple entities of the same physical device
    */
-  private createCloudDeviceFromEntities(deviceId: string, entities: Device[]): CloudDevice {
+  private createCloudDeviceFromEntities(haDeviceId: string, entities: Device[]): CloudDevice {
     // Use the first entity as the primary source for device info
     // (all entities should have the same device metadata)
     const primaryEntity = this.selectPrimaryEntity(entities);
@@ -163,6 +163,10 @@ export class SyncDevicesToCloud {
 
     // Determine the primary device type
     const deviceType = this.determinePrimaryDeviceType(entities);
+
+    // Use the primary entity's entityId as the deviceId for stable identification
+    // This prevents duplicates in the database as entityId is unique and stable in HA
+    const deviceId = primaryEntity.entityId;
 
     return {
       deviceId,
