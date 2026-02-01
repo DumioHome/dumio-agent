@@ -360,7 +360,14 @@ export class Agent {
     syncedDevices: number;
     error?: string;
   }> {
+    this.logger.info('syncDevicesToCloud called', { 
+      homeId, 
+      hasCloudClient: !!this.config.cloudClient,
+      cloudClientState: this.config.cloudClient?.connectionState 
+    });
+
     if (!this.config.cloudClient) {
+      this.logger.warn('Cloud client not configured for sync');
       return {
         success: false,
         syncedDevices: 0,
@@ -368,18 +375,38 @@ export class Agent {
       };
     }
 
-    const syncUseCase = new SyncDevicesToCloud(
-      this.haClient,
-      this.config.cloudClient,
-      this.logger
-    );
+    if (this.config.cloudClient.connectionState !== 'connected') {
+      this.logger.warn('Cloud client not connected', { 
+        state: this.config.cloudClient.connectionState 
+      });
+      return {
+        success: false,
+        syncedDevices: 0,
+        error: `Cloud client not connected (state: ${this.config.cloudClient.connectionState})`,
+      };
+    }
 
-    const result = await syncUseCase.execute({ homeId });
+    try {
+      const syncUseCase = new SyncDevicesToCloud(
+        this.haClient,
+        this.config.cloudClient,
+        this.logger
+      );
 
-    return {
-      success: result.success,
-      syncedDevices: result.syncedDevices,
-      error: result.error,
-    };
+      const result = await syncUseCase.execute({ homeId });
+
+      return {
+        success: result.success,
+        syncedDevices: result.syncedDevices,
+        error: result.error,
+      };
+    } catch (error) {
+      this.logger.error('syncDevicesToCloud failed', error);
+      return {
+        success: false,
+        syncedDevices: 0,
+        error: error instanceof Error ? error.message : 'Unknown sync error',
+      };
+    }
   }
 }

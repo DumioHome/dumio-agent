@@ -416,18 +416,33 @@ export class HttpServer {
 
     this.logger.info('Devices sync request received', { homeId: body.homeId });
 
-    const result = await this.agent.syncDevicesToCloud(body.homeId);
+    try {
+      const result = await this.agent.syncDevicesToCloud(body.homeId);
 
-    if (result.success) {
-      this.sendJson(res, 200, {
-        success: true,
-        message: 'Devices synced to cloud successfully',
+      this.logger.info('Devices sync result', { 
+        success: result.success, 
         syncedDevices: result.syncedDevices,
+        error: result.error 
       });
-    } else {
+
+      if (result.success) {
+        this.sendJson(res, 200, {
+          success: true,
+          message: 'Devices synced to cloud successfully',
+          syncedDevices: result.syncedDevices,
+        });
+      } else {
+        this.sendJson(res, 500, {
+          success: false,
+          error: result.error ?? 'Unknown error during sync',
+          syncedDevices: 0,
+        });
+      }
+    } catch (error) {
+      this.logger.error('Devices sync failed with exception', error);
       this.sendJson(res, 500, {
         success: false,
-        error: result.error ?? 'Unknown error during sync',
+        error: error instanceof Error ? error.message : 'Unexpected error during sync',
         syncedDevices: 0,
       });
     }
