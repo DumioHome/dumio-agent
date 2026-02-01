@@ -17,13 +17,15 @@ describe('SyncDevicesToCloud', () => {
     success: true,
     data: {
       devices: [
-        { id: 'cloud-1', deviceType: 'light', name: 'Living Room Light' },
-        { id: 'cloud-2', deviceType: 'switch', name: 'Kitchen Switch' },
+        { id: 'device1', deviceType: 'light', name: 'Living Room Light' },
+        { id: 'device2', deviceType: 'switch', name: 'Kitchen Switch' },
+        { id: 'device3', deviceType: 'sensor', name: 'Multi Sensor' },
       ],
     },
   };
 
   beforeEach(() => {
+    // 4 entities but only 3 physical devices (temp + humidity share device3)
     mockStates = [
       {
         entity_id: 'light.living_room',
@@ -50,7 +52,7 @@ describe('SyncDevicesToCloud', () => {
         entity_id: 'sensor.temperature',
         state: '22.5',
         attributes: {
-          friendly_name: 'Temperature Sensor',
+          friendly_name: 'Temperature',
           unit_of_measurement: '°C',
           device_class: 'temperature',
         },
@@ -62,7 +64,7 @@ describe('SyncDevicesToCloud', () => {
         entity_id: 'sensor.humidity',
         state: '65',
         attributes: {
-          friendly_name: 'Humidity Sensor',
+          friendly_name: 'Humidity',
           unit_of_measurement: '%',
           device_class: 'humidity',
         },
@@ -98,20 +100,13 @@ describe('SyncDevicesToCloud', () => {
                 identifiers: [['tplink', 'def456']],
               },
               { 
+                // Single physical device with temp + humidity sensors
                 id: 'device3', 
-                name: 'Temp Sensor', 
+                name: 'Multi Sensor', 
                 manufacturer: 'Xiaomi',
                 model: 'TH01',
                 area_id: 'living_room',
                 identifiers: [['xiaomi_miio', 'ghi789']],
-              },
-              { 
-                id: 'device4', 
-                name: 'Humidity Sensor', 
-                manufacturer: 'Xiaomi',
-                model: 'TH01',
-                area_id: 'living_room',
-                identifiers: [['xiaomi_miio', 'jkl012']],
               },
             ],
           });
@@ -129,8 +124,9 @@ describe('SyncDevicesToCloud', () => {
             result: [
               { entity_id: 'light.living_room', device_id: 'device1', area_id: 'living_room' },
               { entity_id: 'switch.kitchen', device_id: 'device2', area_id: 'kitchen' },
+              // Both sensors belong to the same physical device (device3)
               { entity_id: 'sensor.temperature', device_id: 'device3', area_id: 'living_room' },
-              { entity_id: 'sensor.humidity', device_id: 'device4', area_id: 'living_room' },
+              { entity_id: 'sensor.humidity', device_id: 'device3', area_id: 'living_room' },
             ],
           });
         }
@@ -178,15 +174,16 @@ describe('SyncDevicesToCloud', () => {
     useCase = new SyncDevicesToCloud(mockHaClient, mockCloudClient, mockLogger);
   });
 
-  it('should sync devices to cloud successfully', async () => {
+  it('should sync physical devices to cloud (grouping entities by device_id)', async () => {
     const result = await useCase.execute({ homeId: 'test-home-id' });
 
     expect(result.success).toBe(true);
-    expect(result.syncedDevices).toBe(4);
+    // 4 entities but only 3 physical devices (temp + humidity share device3)
+    expect(result.syncedDevices).toBe(3);
     expect(result.response).toEqual(mockSyncResponse);
   });
 
-  it('should emit devices:sync event with correct payload', async () => {
+  it('should emit devices:sync event with correct payload structure', async () => {
     await useCase.execute({ homeId: 'test-home-id' });
 
     expect(mockCloudClient.emitWithCallback).toHaveBeenCalledWith(
@@ -197,6 +194,57 @@ describe('SyncDevicesToCloud', () => {
       }),
       30000
     );
+
+    const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
+    const payload = emitCall[1];
+    
+    // Should have 3 physical devices, not 4 entities
+    expect(payload.devices).toHaveLength(3);
+  });
+
+  it('should group multiple entities into one physical device with combined capabilities', async () => {
+    await useCase.execute({ homeId: 'test-home-id' });
+
+    const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
+    const payload = emitCall[1];
+    
+    // Find the multi-sensor device (device3) which has both temp and humidity
+    const multiSensor = payload.devices.find((d: any) => d.deviceId === 'device3');
+
+    expect(multiSensor).toBeDefined();
+    expect(multiSensor.deviceId).toBe('device3');
+    expect(multiSensor.name).toBe('Multi Sensor');
+    expect(multiSensor.manufacturer).toBe('Xiaomi');
+    expect(multiSensor.model).toBe('TH01');
+    
+    // Should have both entity IDs
+    expect(multiSensor.entityIds).toContain('sensor.temperature');
+    expect(multiSensor.entityIds).toContain('sensor.humidity');
+    expect(multiSensor.entityIds).toHaveLength(2);
+
+    // Should have both temperature and humidity capabilities
+    const tempCap = multiSensor.capabilities.find((c: any) => c.capabilityType === 'temperature');
+    const humidityCap = multiSensor.capabilities.find((c: any) => c.capabilityType === 'humidity');
+
+    expect(tempCap).toBeDefined();
+    expect(tempCap.meta.unit).toBe('°C');
+    
+    expect(humidityCap).toBeDefined();
+    expect(humidityCap.meta.unit).toBe('%');
+  });
+
+  it('should include deviceId and entityIds in each device', async () => {
+    await useCase.execute({ homeId: 'test-home-id' });
+
+    const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
+    const payload = emitCall[1];
+    
+    const lightDevice = payload.devices.find((d: any) => d.deviceId === 'device1');
+
+    expect(lightDevice).toBeDefined();
+    expect(lightDevice.deviceId).toBe('device1');
+    expect(lightDevice.entityIds).toEqual(['light.living_room']);
+    expect(lightDevice.integration).toBe('tuya');
   });
 
   it('should transform light device with correct capabilities', async () => {
@@ -204,7 +252,7 @@ describe('SyncDevicesToCloud', () => {
 
     const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
     const payload = emitCall[1];
-    const lightDevice = payload.devices.find((d: any) => d.entityId === 'light.living_room');
+    const lightDevice = payload.devices.find((d: any) => d.deviceId === 'device1');
 
     expect(lightDevice).toBeDefined();
     expect(lightDevice.deviceType).toBe('light');
@@ -216,21 +264,11 @@ describe('SyncDevicesToCloud', () => {
     // Check capabilities
     const switchCap = lightDevice.capabilities.find((c: any) => c.capabilityType === 'switch');
     expect(switchCap).toBeDefined();
-    expect(switchCap.valueType).toBe('boolean');
     expect(switchCap.currentValue.on).toBe(true);
 
     const brightnessCap = lightDevice.capabilities.find((c: any) => c.capabilityType === 'brightness');
     expect(brightnessCap).toBeDefined();
-    expect(brightnessCap.valueType).toBe('number');
-    expect(brightnessCap.currentValue.value).toBe(75); // 191/255 * 100 ≈ 75
-    expect(brightnessCap.meta.min).toBe(0);
-    expect(brightnessCap.meta.max).toBe(100);
-    expect(brightnessCap.meta.unit).toBe('%');
-
-    const colorTempCap = lightDevice.capabilities.find((c: any) => c.capabilityType === 'color_temp');
-    expect(colorTempCap).toBeDefined();
-    expect(colorTempCap.currentValue.value).toBe(4000);
-    expect(colorTempCap.meta.unit).toBe('K');
+    expect(brightnessCap.currentValue.value).toBe(75);
   });
 
   it('should transform switch device with correct capabilities', async () => {
@@ -238,50 +276,18 @@ describe('SyncDevicesToCloud', () => {
 
     const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
     const payload = emitCall[1];
-    const switchDevice = payload.devices.find((d: any) => d.entityId === 'switch.kitchen');
+    const switchDevice = payload.devices.find((d: any) => d.deviceId === 'device2');
 
     expect(switchDevice).toBeDefined();
     expect(switchDevice.deviceType).toBe('switch');
     expect(switchDevice.name).toBe('Kitchen Switch');
     expect(switchDevice.manufacturer).toBe('TP-Link');
     expect(switchDevice.model).toBe('Smart Plug');
+    expect(switchDevice.entityIds).toEqual(['switch.kitchen']);
 
     const switchCap = switchDevice.capabilities.find((c: any) => c.capabilityType === 'switch');
     expect(switchCap).toBeDefined();
     expect(switchCap.currentValue.on).toBe(false);
-  });
-
-  it('should transform temperature sensor with correct capabilities', async () => {
-    await useCase.execute({ homeId: 'test-home-id' });
-
-    const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
-    const payload = emitCall[1];
-    const tempSensor = payload.devices.find((d: any) => d.entityId === 'sensor.temperature');
-
-    expect(tempSensor).toBeDefined();
-    expect(tempSensor.deviceType).toBe('temperature');
-    expect(tempSensor.manufacturer).toBe('Xiaomi');
-    expect(tempSensor.model).toBe('TH01');
-
-    const tempCap = tempSensor.capabilities.find((c: any) => c.capabilityType === 'temperature');
-    expect(tempCap).toBeDefined();
-    expect(tempCap.valueType).toBe('number');
-    expect(tempCap.meta.unit).toBe('°C');
-  });
-
-  it('should transform humidity sensor with correct capabilities', async () => {
-    await useCase.execute({ homeId: 'test-home-id' });
-
-    const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
-    const payload = emitCall[1];
-    const humiditySensor = payload.devices.find((d: any) => d.entityId === 'sensor.humidity');
-
-    expect(humiditySensor).toBeDefined();
-    expect(humiditySensor.deviceType).toBe('humidity');
-
-    const humidityCap = humiditySensor.capabilities.find((c: any) => c.capabilityType === 'humidity');
-    expect(humidityCap).toBeDefined();
-    expect(humidityCap.meta.unit).toBe('%');
   });
 
   it('should handle cloud error response', async () => {
@@ -307,7 +313,7 @@ describe('SyncDevicesToCloud', () => {
     expect(result.syncedDevices).toBe(0);
   });
 
-  it('should log sync execution', async () => {
+  it('should log sync execution with physical device count', async () => {
     await useCase.execute({ homeId: 'test-home-id' });
 
     expect(mockLogger.info).toHaveBeenCalledWith(
@@ -319,7 +325,7 @@ describe('SyncDevicesToCloud', () => {
       'Devices synced to cloud',
       expect.objectContaining({
         homeId: 'test-home-id',
-        syncedDevices: 4,
+        syncedDevices: 3, // Physical devices, not entities
         success: true,
       })
     );

@@ -21,6 +21,7 @@ import {
   GetDevices,
   GetRooms,
   SyncDevicesToCloud,
+  DeviceStateWatcher,
 } from '../application/index.js';
 
 export interface AgentConfig {
@@ -48,6 +49,7 @@ export class Agent {
   private getDevicesUseCase: GetDevices;
   private getRoomsUseCase: GetRooms;
   private eventSubscription?: { unsubscribe: () => Promise<void> };
+  private deviceStateWatcher?: DeviceStateWatcher;
 
   constructor(
     private readonly haClient: IHomeAssistantClient,
@@ -354,10 +356,12 @@ export class Agent {
   /**
    * Sync devices to cloud
    * Fetches devices from HA, transforms them to cloud format, and emits to cloud
+   * After successful sync, starts watching for real-time state changes
    */
   async syncDevicesToCloud(homeId: string): Promise<{
     success: boolean;
     syncedDevices: number;
+    watching: boolean;
     error?: string;
   }> {
     this.logger.info('syncDevicesToCloud called', { 
@@ -371,6 +375,7 @@ export class Agent {
       return {
         success: false,
         syncedDevices: 0,
+        watching: false,
         error: 'Cloud client not configured',
       };
     }
@@ -382,6 +387,7 @@ export class Agent {
       return {
         success: false,
         syncedDevices: 0,
+        watching: false,
         error: `Cloud client not connected (state: ${this.config.cloudClient.connectionState})`,
       };
     }
@@ -395,18 +401,72 @@ export class Agent {
 
       const result = await syncUseCase.execute({ homeId });
 
+      // If sync was successful, initialize and start the state watcher
+      if (result.success && result.devices) {
+        this.initializeStateWatcher(homeId, result.devices);
+      }
+
       return {
         success: result.success,
         syncedDevices: result.syncedDevices,
-        error: result.error,
+        watching: this.deviceStateWatcher?.active ?? false,
+        error: result.error ?? result.response?.error,
       };
     } catch (error) {
       this.logger.error('syncDevicesToCloud failed', error);
       return {
         success: false,
         syncedDevices: 0,
+        watching: false,
         error: error instanceof Error ? error.message : 'Unknown sync error',
       };
     }
+  }
+
+  /**
+   * Initialize the device state watcher after a successful sync
+   */
+  private initializeStateWatcher(homeId: string, devices: import('../domain/entities/CloudDevice.js').CloudDevice[]): void {
+    if (!this.config.cloudClient) {
+      return;
+    }
+
+    // Stop existing watcher if any
+    if (this.deviceStateWatcher) {
+      this.deviceStateWatcher.reset();
+    }
+
+    // Create new watcher
+    this.deviceStateWatcher = new DeviceStateWatcher(
+      this.haClient,
+      this.config.cloudClient,
+      this.logger
+    );
+
+    // Initialize with synced devices and start watching
+    this.deviceStateWatcher.initializeFromSync(homeId, devices);
+    this.deviceStateWatcher.startWatching();
+
+    this.logger.info('Device state watcher started after sync', {
+      homeId,
+      watchingEntities: this.deviceStateWatcher.mappingCount,
+    });
+  }
+
+  /**
+   * Stop the device state watcher
+   */
+  stopStateWatcher(): void {
+    if (this.deviceStateWatcher) {
+      this.deviceStateWatcher.reset();
+      this.logger.info('Device state watcher stopped');
+    }
+  }
+
+  /**
+   * Check if state watcher is active
+   */
+  isStateWatcherActive(): boolean {
+    return this.deviceStateWatcher?.active ?? false;
   }
 }

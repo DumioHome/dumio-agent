@@ -425,19 +425,24 @@ export class HttpServer {
         error: result.error 
       });
 
-      if (result.success) {
-        this.sendJson(res, 200, {
-          success: true,
-          message: 'Devices synced to cloud successfully',
-          syncedDevices: result.syncedDevices,
-        });
-      } else {
-        this.sendJson(res, 500, {
-          success: false,
-          error: result.error ?? 'Unknown error during sync',
-          syncedDevices: 0,
-        });
-      }
+    if (result.success) {
+      this.sendJson(res, 200, {
+        success: true,
+        message: 'Devices synced to cloud successfully',
+        syncedDevices: result.syncedDevices,
+        watching: result.watching,
+        watchingMessage: result.watching 
+          ? 'Real-time state updates are now being sent to cloud' 
+          : 'State watcher not started',
+      });
+    } else {
+      this.sendJson(res, 500, {
+        success: false,
+        error: result.error ?? 'Unknown error during sync',
+        syncedDevices: 0,
+        watching: false,
+      });
+    }
     } catch (error) {
       this.logger.error('Devices sync failed with exception', error);
       this.sendJson(res, 500, {

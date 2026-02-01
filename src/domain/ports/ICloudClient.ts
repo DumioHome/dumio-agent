@@ -1,4 +1,4 @@
-import type { DevicesSyncPayload, DevicesSyncCallbackResponse } from '../entities/CloudDevice.js';
+import type { DevicesSyncPayload, DevicesSyncCallbackResponse, CapabilityUpdatePayload } from '../entities/CloudDevice.js';
 
 /**
  * Cloud connection state
@@ -48,6 +48,8 @@ export interface CloudResponseMap {
   'devices:response': unknown[];
   'rooms:response': unknown[];
   'command:result': { success: boolean; message: string; data?: unknown };
+  /** Real-time capability state update */
+  'capability:update': CapabilityUpdatePayload;
 }
 
 /**

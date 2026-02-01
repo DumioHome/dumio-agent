@@ -19,7 +19,8 @@ export type CloudCapabilityType =
   | 'motion'
   | 'door'
   | 'window'
-  | 'lock';
+  | 'lock'
+  | 'sensor'; // Generic sensor without specific type
 
 /**
  * Cloud capability value types
@@ -87,11 +88,14 @@ export type CloudDeviceType =
 
 /**
  * Cloud device format for sync
+ * Represents a physical device that may have multiple entities/capabilities
  */
 export interface CloudDevice {
-  /** Home Assistant entity ID for reference */
-  entityId: string;
-  /** Device type category */
+  /** Home Assistant device ID (physical device identifier) */
+  deviceId: string;
+  /** All entity IDs associated with this physical device */
+  entityIds: string[];
+  /** Primary device type category (most relevant type from entities) */
   deviceType: CloudDeviceType;
   /** Device friendly name */
   name: string;
@@ -101,7 +105,9 @@ export interface CloudDevice {
   manufacturer: string | null;
   /** Room/area name */
   roomName: string | null;
-  /** Device capabilities array */
+  /** Integration/platform (tuya, zha, mqtt, etc.) */
+  integration: string | null;
+  /** Device capabilities array (combined from all entities) */
   capabilities: CloudCapability[];
 }
 
@@ -129,4 +135,20 @@ export interface DevicesSyncCallbackResponse {
 export interface DevicesSyncPayload {
   homeId: string;
   devices: CloudDevice[];
+}
+
+/**
+ * Capability update payload for real-time state changes
+ */
+export interface CapabilityUpdatePayload {
+  /** Physical device ID */
+  deviceId: string;
+  /** Entity ID that changed */
+  entityId: string;
+  /** Type of capability that changed */
+  capabilityType: CloudCapabilityType;
+  /** New value */
+  currentValue: CloudCapabilityValue;
+  /** Timestamp of the change */
+  timestamp: string;
 }

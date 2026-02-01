@@ -20,6 +20,8 @@ export interface SyncDevicesToCloudInput {
 export interface SyncDevicesToCloudOutput {
   success: boolean;
   syncedDevices: number;
+  /** The cloud devices that were synced (for initializing state watcher) */
+  devices?: CloudDevice[];
   response?: DevicesSyncCallbackResponse;
   error?: string;
 }
@@ -50,18 +52,31 @@ export class SyncDevicesToCloud {
 
       const haDevices = devicesResult.devices as Device[];
       
-      this.logger.debug('Fetched devices from Home Assistant', {
-        count: haDevices.length,
+      this.logger.debug('Fetched entities from Home Assistant', {
+        entityCount: haDevices.length,
       });
 
-      // Transform devices to cloud format
-      const cloudDevices = haDevices.map((device) => this.mapDeviceToCloud(device));
+      // Group entities by physical device ID and transform to cloud format
+      const cloudDevices = this.groupAndTransformDevices(haDevices);
 
-      this.logger.debug('Transformed devices to cloud format', {
-        count: cloudDevices.length,
+      this.logger.debug('Transformed to physical devices', {
+        physicalDeviceCount: cloudDevices.length,
+        totalEntities: haDevices.length,
       });
 
       // Emit sync event to cloud with callback
+      this.logger.debug('Sending devices:sync to cloud', {
+        homeId: input.homeId,
+        deviceCount: cloudDevices.length,
+        devices: cloudDevices.map(d => ({ 
+          deviceId: d.deviceId, 
+          name: d.name, 
+          type: d.deviceType,
+          entityCount: d.entityIds.length,
+          capabilities: d.capabilities.length,
+        })),
+      });
+
       const response = await this.cloudClient.emitWithCallback(
         'devices:sync',
         {
@@ -75,12 +90,15 @@ export class SyncDevicesToCloud {
         homeId: input.homeId,
         syncedDevices: cloudDevices.length,
         success: response.success,
+        cloudResponse: response,
       });
 
       return {
         success: response.success,
         syncedDevices: cloudDevices.length,
+        devices: cloudDevices,
         response,
+        error: response.error,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -95,18 +113,118 @@ export class SyncDevicesToCloud {
   }
 
   /**
-   * Map HA Device to Cloud Device format
+   * Group HA entities by physical device ID and transform to CloudDevice format
+   * Multiple entities from the same physical device become one CloudDevice with combined capabilities
    */
-  private mapDeviceToCloud(device: Device): CloudDevice {
+  private groupAndTransformDevices(haDevices: Device[]): CloudDevice[] {
+    // Group entities by device ID (physical device)
+    const deviceGroups = new Map<string, Device[]>();
+
+    for (const device of haDevices) {
+      const deviceId = device.id;
+      
+      if (!deviceGroups.has(deviceId)) {
+        deviceGroups.set(deviceId, []);
+      }
+      deviceGroups.get(deviceId)!.push(device);
+    }
+
+    // Transform each group into a CloudDevice
+    const cloudDevices: CloudDevice[] = [];
+
+    for (const [deviceId, entities] of deviceGroups) {
+      const cloudDevice = this.createCloudDeviceFromEntities(deviceId, entities);
+      cloudDevices.push(cloudDevice);
+    }
+
+    return cloudDevices;
+  }
+
+  /**
+   * Create a CloudDevice from multiple entities of the same physical device
+   */
+  private createCloudDeviceFromEntities(deviceId: string, entities: Device[]): CloudDevice {
+    // Use the first entity as the primary source for device info
+    // (all entities should have the same device metadata)
+    const primaryEntity = this.selectPrimaryEntity(entities);
+
+    // Collect all entity IDs
+    const entityIds = entities.map(e => e.entityId);
+
+    // Combine capabilities from all entities
+    const allCapabilities: CloudCapability[] = [];
+    for (const entity of entities) {
+      const caps = this.extractCapabilities(entity);
+      allCapabilities.push(...caps);
+    }
+
+    // Remove duplicate capabilities (same type)
+    const uniqueCapabilities = this.deduplicateCapabilities(allCapabilities);
+
+    // Determine the primary device type
+    const deviceType = this.determinePrimaryDeviceType(entities);
+
     return {
-      entityId: device.entityId,
-      deviceType: device.type,
-      name: device.name,
-      model: device.model,
-      manufacturer: device.manufacturer,
-      roomName: device.roomName,
-      capabilities: this.extractCapabilities(device),
+      deviceId,
+      entityIds,
+      deviceType,
+      name: primaryEntity.name,
+      model: primaryEntity.model,
+      manufacturer: primaryEntity.manufacturer,
+      roomName: primaryEntity.roomName,
+      integration: primaryEntity.integration,
+      capabilities: uniqueCapabilities,
     };
+  }
+
+  /**
+   * Select the primary entity from a group (prefer controllable entities over sensors)
+   */
+  private selectPrimaryEntity(entities: Device[]): Device {
+    // Priority: light > switch > climate > cover > media_player > sensor > binary_sensor
+    const priority: Record<string, number> = {
+      light: 10,
+      switch: 9,
+      climate: 8,
+      cover: 7,
+      fan: 6,
+      media_player: 5,
+      lock: 4,
+      vacuum: 3,
+      sensor: 2,
+      binary_sensor: 1,
+    };
+
+    return entities.reduce((best, current) => {
+      const bestPriority = priority[best.type] ?? 0;
+      const currentPriority = priority[current.type] ?? 0;
+      return currentPriority > bestPriority ? current : best;
+    });
+  }
+
+  /**
+   * Determine the primary device type from all entities
+   */
+  private determinePrimaryDeviceType(entities: Device[]): CloudDevice['deviceType'] {
+    const primaryEntity = this.selectPrimaryEntity(entities);
+    return primaryEntity.type;
+  }
+
+  /**
+   * Remove duplicate capabilities, keeping the first occurrence of each type
+   */
+  private deduplicateCapabilities(capabilities: CloudCapability[]): CloudCapability[] {
+    const seen = new Set<string>();
+    const unique: CloudCapability[] = [];
+
+    for (const cap of capabilities) {
+      if (!seen.has(cap.capabilityType)) {
+        seen.add(cap.capabilityType);
+        unique.push(cap);
+      }
+    }
+
+    return unique;
   }
 
   /**
@@ -333,7 +451,8 @@ export class SyncDevicesToCloud {
       humidity: 'humidity',
       power: 'power',
       battery: 'battery',
+      sensor: 'sensor',
     };
-    return mapping[type] ?? 'temperature';
+    return mapping[type] ?? 'sensor';
   }
 }
