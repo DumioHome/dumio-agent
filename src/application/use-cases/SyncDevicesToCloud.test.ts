@@ -208,11 +208,15 @@ describe('SyncDevicesToCloud', () => {
     const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
     const payload = emitCall[1];
     
-    // Find the multi-sensor device (device3) which has both temp and humidity
-    const multiSensor = payload.devices.find((d: any) => d.deviceId === 'device3');
+    // Find the multi-sensor device which has both temp and humidity
+    // deviceId is now the primary entityId (sensor.temperature in this case)
+    const multiSensor = payload.devices.find((d: any) => 
+      d.entityIds.includes('sensor.temperature') && d.entityIds.includes('sensor.humidity')
+    );
 
     expect(multiSensor).toBeDefined();
-    expect(multiSensor.deviceId).toBe('device3');
+    // deviceId should be the primary entityId
+    expect(multiSensor.deviceId).toBe('sensor.temperature');
     expect(multiSensor.name).toBe('Multi Sensor');
     expect(multiSensor.manufacturer).toBe('Xiaomi');
     expect(multiSensor.model).toBe('TH01');
@@ -233,16 +237,17 @@ describe('SyncDevicesToCloud', () => {
     expect(humidityCap.meta.unit).toBe('%');
   });
 
-  it('should include deviceId and entityIds in each device', async () => {
+  it('should use primary entityId as deviceId for stable identification', async () => {
     await useCase.execute({ homeId: 'test-home-id' });
 
     const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
     const payload = emitCall[1];
     
-    const lightDevice = payload.devices.find((d: any) => d.deviceId === 'device1');
+    const lightDevice = payload.devices.find((d: any) => d.entityIds.includes('light.living_room'));
 
     expect(lightDevice).toBeDefined();
-    expect(lightDevice.deviceId).toBe('device1');
+    // deviceId should be the primary entityId, not the HA device registry ID
+    expect(lightDevice.deviceId).toBe('light.living_room');
     expect(lightDevice.entityIds).toEqual(['light.living_room']);
     expect(lightDevice.integration).toBe('tuya');
   });
@@ -252,7 +257,7 @@ describe('SyncDevicesToCloud', () => {
 
     const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
     const payload = emitCall[1];
-    const lightDevice = payload.devices.find((d: any) => d.deviceId === 'device1');
+    const lightDevice = payload.devices.find((d: any) => d.deviceId === 'light.living_room');
 
     expect(lightDevice).toBeDefined();
     expect(lightDevice.deviceType).toBe('light');
@@ -276,7 +281,7 @@ describe('SyncDevicesToCloud', () => {
 
     const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
     const payload = emitCall[1];
-    const switchDevice = payload.devices.find((d: any) => d.deviceId === 'device2');
+    const switchDevice = payload.devices.find((d: any) => d.deviceId === 'switch.kitchen');
 
     expect(switchDevice).toBeDefined();
     expect(switchDevice.deviceType).toBe('switch');
