@@ -22,7 +22,9 @@ import {
   GetRooms,
   SyncDevicesToCloud,
   DeviceStateWatcher,
+  DeviceController,
 } from '../application/index.js';
+import type { DeviceControlCommand, DeviceControlResponse } from '../domain/entities/CloudDevice.js';
 
 export interface AgentConfig {
   name: string;
@@ -50,6 +52,7 @@ export class Agent {
   private getRoomsUseCase: GetRooms;
   private eventSubscription?: { unsubscribe: () => Promise<void> };
   private deviceStateWatcher?: DeviceStateWatcher;
+  private deviceController?: DeviceController;
 
   constructor(
     private readonly haClient: IHomeAssistantClient,
@@ -424,7 +427,7 @@ export class Agent {
   }
 
   /**
-   * Initialize the device state watcher after a successful sync
+   * Initialize the device state watcher and controller after a successful sync
    */
   private initializeStateWatcher(homeId: string, devices: import('../domain/entities/CloudDevice.js').CloudDevice[]): void {
     if (!this.config.cloudClient) {
@@ -447,9 +450,14 @@ export class Agent {
     this.deviceStateWatcher.initializeFromSync(homeId, devices);
     this.deviceStateWatcher.startWatching();
 
-    this.logger.info('Device state watcher started after sync', {
+    // Initialize device controller for receiving commands
+    this.deviceController = new DeviceController(this.haClient, this.logger);
+    this.deviceController.initializeFromSync(devices);
+
+    this.logger.info('Device state watcher and controller started after sync', {
       homeId,
       watchingEntities: this.deviceStateWatcher.mappingCount,
+      controllableDevices: this.deviceController.mappingCount,
     });
   }
 
@@ -468,5 +476,29 @@ export class Agent {
    */
   isStateWatcherActive(): boolean {
     return this.deviceStateWatcher?.active ?? false;
+  }
+
+  /**
+   * Control a device (execute a command from cloud)
+   */
+  async controlDevice(command: DeviceControlCommand): Promise<DeviceControlResponse> {
+    if (!this.deviceController) {
+      this.logger.warn('Device controller not initialized. Run sync first.');
+      return {
+        success: false,
+        deviceId: command.deviceId,
+        message: 'Device controller not initialized',
+        error: 'Run devices sync first to initialize device mappings',
+      };
+    }
+
+    return this.deviceController.execute(command);
+  }
+
+  /**
+   * Check if device controller is ready
+   */
+  isDeviceControllerReady(): boolean {
+    return (this.deviceController?.mappingCount ?? 0) > 0;
   }
 }

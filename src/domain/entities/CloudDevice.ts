@@ -152,3 +152,28 @@ export interface CapabilityUpdatePayload {
   /** Timestamp of the change */
   timestamp: string;
 }
+
+/**
+ * Device control command from cloud
+ */
+export interface DeviceControlCommand {
+  /** Physical device ID or entity ID */
+  deviceId: string;
+  /** Optional: specific entity to control (if device has multiple) */
+  entityId?: string;
+  /** Type of capability to control */
+  capabilityType: CloudCapabilityType;
+  /** Value to set */
+  value: CloudCapabilityValue;
+}
+
+/**
+ * Device control response
+ */
+export interface DeviceControlResponse {
+  success: boolean;
+  deviceId: string;
+  entityId?: string;
+  message: string;
+  error?: string;
+}

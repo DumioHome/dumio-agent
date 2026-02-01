@@ -282,6 +282,24 @@ async function main(): Promise<void> {
             });
           }
         });
+
+        // Handle device control commands from cloud
+        cloudClient.on('device:control', async (command) => {
+          logger.info('Device control command received', {
+            deviceId: command.deviceId,
+            capabilityType: command.capabilityType,
+            value: command.value,
+          });
+
+          const result = await agent.controlDevice(command);
+          cloudClient?.emit('device:control:response', result);
+
+          logger.info('Device control command completed', {
+            deviceId: command.deviceId,
+            success: result.success,
+            message: result.message,
+          });
+        });
       } catch (error) {
         logger.error('Failed to connect to cloud', { error });
         // Continue running without cloud connection

@@ -1,4 +1,10 @@
-import type { DevicesSyncPayload, DevicesSyncCallbackResponse, CapabilityUpdatePayload } from '../entities/CloudDevice.js';
+import type { 
+  DevicesSyncPayload, 
+  DevicesSyncCallbackResponse, 
+  CapabilityUpdatePayload,
+  DeviceControlCommand,
+  DeviceControlResponse,
+} from '../entities/CloudDevice.js';
 
 /**
  * Cloud connection state
@@ -38,6 +44,8 @@ export interface CloudEventMap {
   'command:execute': { command: string; params?: Record<string, unknown> };
   'devices:request': { filter?: Record<string, unknown> };
   'rooms:request': void;
+  /** Control a device (turn on/off, set brightness, etc.) */
+  'device:control': DeviceControlCommand;
 }
 
 /**
@@ -50,6 +58,8 @@ export interface CloudResponseMap {
   'command:result': { success: boolean; message: string; data?: unknown };
   /** Real-time capability state update */
   'capability:update': CapabilityUpdatePayload;
+  /** Response to device control command */
+  'device:control:response': DeviceControlResponse;
 }
 
 /**
