@@ -247,6 +247,10 @@ export class HttpServer {
         return await this.handleGetEntities(res, url);
       }
 
+      if (path === '/api/devices/sync' && method === 'POST') {
+        return await this.handleSyncDevices(req, res);
+      }
+
       // 404 Not Found
       return this.sendJson(res, 404, { error: 'Not Found', path });
 
@@ -394,6 +398,38 @@ export class HttpServer {
     } else {
       const entities = await this.agent.getState();
       this.sendJson(res, 200, { entities, count: entities.length });
+    }
+  }
+
+  /**
+   * Handle devices sync request from app
+   * Fetches devices from HA, transforms them, and sends to cloud
+   */
+  private async handleSyncDevices(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await this.parseBody<{
+      homeId: string;
+    }>(req);
+
+    if (!body.homeId) {
+      return this.sendJson(res, 400, { error: 'homeId is required' });
+    }
+
+    this.logger.info('Devices sync request received', { homeId: body.homeId });
+
+    const result = await this.agent.syncDevicesToCloud(body.homeId);
+
+    if (result.success) {
+      this.sendJson(res, 200, {
+        success: true,
+        message: 'Devices synced to cloud successfully',
+        syncedDevices: result.syncedDevices,
+      });
+    } else {
+      this.sendJson(res, 500, {
+        success: false,
+        error: result.error ?? 'Unknown error during sync',
+        syncedDevices: 0,
+      });
     }
   }
 
