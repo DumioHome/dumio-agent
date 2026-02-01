@@ -7,3 +7,4 @@ export * from './GetDevices.js';
 export * from './GetRooms.js';
 export * from './SyncDevicesToCloud.js';
 export * from './DeviceStateWatcher.js';
+export * from './DeviceController.js';

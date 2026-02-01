@@ -251,6 +251,10 @@ export class HttpServer {
         return await this.handleSyncDevices(req, res);
       }
 
+      if (path === '/api/devices/control' && method === 'POST') {
+        return await this.handleControlDevice(req, res);
+      }
+
       // 404 Not Found
       return this.sendJson(res, 404, { error: 'Not Found', path });
 
@@ -449,6 +453,71 @@ export class HttpServer {
         success: false,
         error: error instanceof Error ? error.message : 'Unexpected error during sync',
         syncedDevices: 0,
+      });
+    }
+  }
+
+  /**
+   * Handle device control request
+   * Control a device (turn on/off, set brightness, etc.)
+   */
+  private async handleControlDevice(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await this.parseBody<{
+      deviceId: string;
+      entityId?: string;
+      capabilityType: string;
+      value: { on?: boolean; value?: number | string; r?: number; g?: number; b?: number };
+    }>(req);
+
+    // Validate required fields
+    if (!body.deviceId && !body.entityId) {
+      return this.sendJson(res, 400, { 
+        success: false,
+        error: 'deviceId or entityId is required' 
+      });
+    }
+
+    if (!body.capabilityType) {
+      return this.sendJson(res, 400, { 
+        success: false,
+        error: 'capabilityType is required (switch, brightness, color_temp, etc.)' 
+      });
+    }
+
+    if (!body.value) {
+      return this.sendJson(res, 400, { 
+        success: false,
+        error: 'value is required (e.g., { on: true } or { value: 75 })' 
+      });
+    }
+
+    this.logger.info('Device control request received', {
+      deviceId: body.deviceId,
+      entityId: body.entityId,
+      capabilityType: body.capabilityType,
+      value: body.value,
+    });
+
+    try {
+      const result = await this.agent.controlDevice({
+        deviceId: body.deviceId ?? body.entityId!,
+        entityId: body.entityId,
+        capabilityType: body.capabilityType as any,
+        value: body.value,
+      });
+
+      if (result.success) {
+        this.sendJson(res, 200, result);
+      } else {
+        this.sendJson(res, 400, result);
+      }
+    } catch (error) {
+      this.logger.error('Device control failed', error);
+      this.sendJson(res, 500, {
+        success: false,
+        deviceId: body.deviceId,
+        message: 'Control command failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
