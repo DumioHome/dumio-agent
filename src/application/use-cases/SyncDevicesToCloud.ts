@@ -113,27 +113,15 @@ export class SyncDevicesToCloud {
   }
 
   /**
-   * Group HA entities by physical device ID and transform to CloudDevice format
-   * Multiple entities from the same physical device become one CloudDevice with combined capabilities
+   * Transform HA devices to CloudDevice format
+   * Each entity becomes a separate CloudDevice, but entities from the same physical device
+   * share the same deviceId (from HA device registry) to identify they belong together
    */
   private groupAndTransformDevices(haDevices: Device[]): CloudDevice[] {
-    // Group entities by device ID (physical device)
-    const deviceGroups = new Map<string, Device[]>();
-
-    for (const device of haDevices) {
-      const deviceId = device.id;
-      
-      if (!deviceGroups.has(deviceId)) {
-        deviceGroups.set(deviceId, []);
-      }
-      deviceGroups.get(deviceId)!.push(device);
-    }
-
-    // Transform each group into a CloudDevice
     const cloudDevices: CloudDevice[] = [];
 
-    for (const [deviceId, entities] of deviceGroups) {
-      const cloudDevice = this.createCloudDeviceFromEntities(deviceId, entities);
+    for (const device of haDevices) {
+      const cloudDevice = this.createCloudDeviceFromEntity(device);
       cloudDevices.push(cloudDevice);
     }
 
@@ -141,94 +129,27 @@ export class SyncDevicesToCloud {
   }
 
   /**
-   * Create a CloudDevice from multiple entities of the same physical device
+   * Create a CloudDevice from a single entity
+   * Uses the device registry ID as deviceId to group entities from the same physical device
    */
-  private createCloudDeviceFromEntities(haDeviceId: string, entities: Device[]): CloudDevice {
-    // Use the first entity as the primary source for device info
-    // (all entities should have the same device metadata)
-    const primaryEntity = this.selectPrimaryEntity(entities);
-
-    // Collect all entity IDs
-    const entityIds = entities.map(e => e.entityId);
-
-    // Combine capabilities from all entities
-    const allCapabilities: CloudCapability[] = [];
-    for (const entity of entities) {
-      const caps = this.extractCapabilities(entity);
-      allCapabilities.push(...caps);
-    }
-
-    // Remove duplicate capabilities (same type)
-    const uniqueCapabilities = this.deduplicateCapabilities(allCapabilities);
-
-    // Determine the primary device type
-    const deviceType = this.determinePrimaryDeviceType(entities);
-
-    // Use the primary entity's entityId as the deviceId for stable identification
-    // This prevents duplicates in the database as entityId is unique and stable in HA
-    const deviceId = primaryEntity.entityId;
+  private createCloudDeviceFromEntity(device: Device): CloudDevice {
+    // Extract capabilities for this entity
+    const capabilities = this.extractCapabilities(device);
 
     return {
-      deviceId,
-      entityIds,
-      deviceType,
-      name: primaryEntity.name,
-      model: primaryEntity.model,
-      manufacturer: primaryEntity.manufacturer,
-      roomName: primaryEntity.roomName,
-      integration: primaryEntity.integration,
-      capabilities: uniqueCapabilities,
+      // Use the HA device registry ID to identify the physical device
+      // Multiple entities from the same physical device will share this ID
+      deviceId: device.id,
+      // This entity's ID
+      entityIds: [device.entityId],
+      deviceType: device.type,
+      name: device.name,
+      model: device.model,
+      manufacturer: device.manufacturer,
+      roomName: device.roomName,
+      integration: device.integration,
+      capabilities,
     };
-  }
-
-  /**
-   * Select the primary entity from a group (prefer controllable entities over sensors)
-   */
-  private selectPrimaryEntity(entities: Device[]): Device {
-    // Priority: light > switch > climate > cover > media_player > sensor > binary_sensor
-    const priority: Record<string, number> = {
-      light: 10,
-      switch: 9,
-      climate: 8,
-      cover: 7,
-      fan: 6,
-      media_player: 5,
-      lock: 4,
-      vacuum: 3,
-      sensor: 2,
-      binary_sensor: 1,
-    };
-
-    return entities.reduce((best, current) => {
-      const bestPriority = priority[best.type] ?? 0;
-      const currentPriority = priority[current.type] ?? 0;
-      return currentPriority > bestPriority ? current : best;
-    });
-  }
-
-  /**
-   * Determine the primary device type from all entities
-   */
-  private determinePrimaryDeviceType(entities: Device[]): CloudDevice['deviceType'] {
-    const primaryEntity = this.selectPrimaryEntity(entities);
-    return primaryEntity.type;
-  }
-
-  /**
-   * Remove duplicate capabilities, keeping the first occurrence of each type
-   */
-  private deduplicateCapabilities(capabilities: CloudCapability[]): CloudCapability[] {
-    const seen = new Set<string>();
-    const unique: CloudCapability[] = [];
-
-    for (const cap of capabilities) {
-      if (!seen.has(cap.capabilityType)) {
-        seen.add(cap.capabilityType);
-        unique.push(cap);
-      }
-    }
-
-    return unique;
   }
 
   /**
