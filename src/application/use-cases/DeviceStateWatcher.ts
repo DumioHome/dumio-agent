@@ -5,6 +5,7 @@ import type { EntityState } from "../../domain/entities/Entity.js";
 import type { DeviceType } from "../../domain/entities/Device.js";
 import type {
   CloudCapabilityType,
+  CloudCapabilityValue,
   SyncedDeviceInfo,
 } from "../../domain/entities/CloudDevice.js";
 
@@ -26,10 +27,10 @@ interface EntityDeviceMapping {
 }
 
 /**
- * Cached state for comparison - now stores direct values
+ * Cached state for comparison
  */
 interface CachedState {
-  value: boolean | number | string | null;
+  value: CloudCapabilityValue;
   timestamp: number;
 }
 
@@ -239,8 +240,8 @@ export class DeviceStateWatcher {
       return;
     }
 
-    // Extract the new value based on capability type (direct value, not wrapped)
-    const currentValue = this.extractDirectValue(
+    // Extract the new value based on capability type (wrapped in object)
+    const currentValue = this.extractCapabilityValue(
       mapping.capabilityType,
       newState
     );
@@ -268,10 +269,11 @@ export class DeviceStateWatcher {
 
   /**
    * Send capability update to cloud using the Dumio UUID
+   * currentValue is wrapped: { on: true }, { value: 75 }, { r, g, b }
    */
   private async sendCapabilityUpdate(
     mapping: EntityDeviceMapping,
-    currentValue: boolean | number | string,
+    currentValue: CloudCapabilityValue,
     entityId: string
   ): Promise<void> {
     try {
@@ -280,7 +282,7 @@ export class DeviceStateWatcher {
         {
           deviceId: mapping.dumioDeviceId, // UUID de Dumio, NOT HA deviceId
           capabilityType: mapping.capabilityType,
-          currentValue,
+          currentValue, // Object: { on: true }, { value: 75 }, etc.
         },
         10000 // 10 second timeout
       );
@@ -321,22 +323,33 @@ export class DeviceStateWatcher {
   }
 
   /**
-   * Compare two direct values for equality
+   * Compare two CloudCapabilityValue objects for equality
    */
   private areValuesEqual(
-    a: boolean | number | string | null,
-    b: boolean | number | string | null
+    a: CloudCapabilityValue,
+    b: CloudCapabilityValue
   ): boolean {
-    if (a === null || b === null) {
-      return a === b;
+    // Compare 'on' boolean
+    if (a.on !== undefined && b.on !== undefined) {
+      return a.on === b.on;
     }
 
-    // For numbers, use a small tolerance for floating point comparison
-    if (typeof a === "number" && typeof b === "number") {
-      return Math.abs(a - b) < 0.01;
+    // Compare 'value' (number or string)
+    if (a.value !== undefined && b.value !== undefined) {
+      // For numbers, use a small tolerance for floating point comparison
+      if (typeof a.value === "number" && typeof b.value === "number") {
+        return Math.abs(a.value - b.value) < 0.01;
+      }
+      return a.value === b.value;
     }
 
-    return a === b;
+    // Compare RGB color
+    if (a.r !== undefined && b.r !== undefined) {
+      return a.r === b.r && a.g === b.g && a.b === b.b;
+    }
+
+    // Fallback: JSON comparison
+    return JSON.stringify(a) === JSON.stringify(b);
   }
 
   /**
@@ -424,36 +437,46 @@ export class DeviceStateWatcher {
   }
 
   /**
-   * Extract the direct capability value from HA state based on capability type
-   * Returns a direct value (true, 75, "heat") NOT wrapped in an object
+   * Extract the capability value from HA state based on capability type
+   * Returns wrapped object: { on: true }, { value: 75 }, { r, g, b }
    */
-  private extractDirectValue(
+  private extractCapabilityValue(
     capabilityType: CloudCapabilityType,
     state: EntityState
-  ): boolean | number | string | null {
+  ): CloudCapabilityValue | null {
     const stateValue = state.state;
     const attrs = state.attributes;
 
     switch (capabilityType) {
       case "switch":
-        return (
-          stateValue === "on" ||
-          stateValue === "playing" ||
-          stateValue === "cleaning"
-        );
+        return {
+          on:
+            stateValue === "on" ||
+            stateValue === "playing" ||
+            stateValue === "cleaning",
+        };
 
       case "brightness":
         if (attrs.brightness !== undefined) {
-          return Math.round(((attrs.brightness as number) / 255) * 100);
+          return {
+            value: Math.round(((attrs.brightness as number) / 255) * 100),
+          };
         }
         return null;
 
       case "color_temp":
         if (attrs.color_temp_kelvin !== undefined) {
-          return attrs.color_temp_kelvin as number;
+          return { value: attrs.color_temp_kelvin as number };
         }
         if (attrs.color_temp !== undefined) {
-          return Math.round(1000000 / (attrs.color_temp as number));
+          return { value: Math.round(1000000 / (attrs.color_temp as number)) };
+        }
+        return null;
+
+      case "color":
+        if (attrs.rgb_color !== undefined) {
+          const rgb = attrs.rgb_color as number[];
+          return { r: rgb[0], g: rgb[1], b: rgb[2] };
         }
         return null;
 
@@ -463,7 +486,7 @@ export class DeviceStateWatcher {
           attrs.current_temperature ??
           parseFloat(stateValue);
         if (!isNaN(temp as number)) {
-          return temp as number;
+          return { value: temp as number };
         }
         return null;
 
@@ -471,7 +494,7 @@ export class DeviceStateWatcher {
         const humidity =
           attrs.humidity ?? attrs.current_humidity ?? parseFloat(stateValue);
         if (!isNaN(humidity as number)) {
-          return humidity as number;
+          return { value: humidity as number };
         }
         return null;
 
@@ -479,66 +502,61 @@ export class DeviceStateWatcher {
         const battery =
           attrs.battery_level ?? attrs.battery ?? parseFloat(stateValue);
         if (!isNaN(battery as number)) {
-          return battery as number;
+          return { value: battery as number };
         }
         return null;
 
       case "power":
         const power = attrs.power ?? parseFloat(stateValue);
         if (!isNaN(power as number)) {
-          return power as number;
+          return { value: power as number };
         }
         return null;
 
       case "energy":
         const energy = attrs.energy ?? parseFloat(stateValue);
         if (!isNaN(energy as number)) {
-          return energy as number;
+          return { value: energy as number };
         }
         return null;
 
       case "position":
         const position = attrs.current_position ?? parseFloat(stateValue);
         if (!isNaN(position as number)) {
-          return position as number;
+          return { value: position as number };
         }
         return null;
 
       case "volume":
         if (attrs.volume_level !== undefined) {
-          return Math.round((attrs.volume_level as number) * 100);
+          return { value: Math.round((attrs.volume_level as number) * 100) };
         }
         return null;
 
       case "mode":
-        return (attrs.hvac_mode ?? stateValue) as string;
+        return { value: (attrs.hvac_mode ?? stateValue) as string };
 
       case "preset":
         if (attrs.preset_mode !== undefined) {
-          return attrs.preset_mode as string;
+          return { value: attrs.preset_mode as string };
         }
         return null;
 
       case "motion":
       case "door":
       case "window":
-        return stateValue === "on" || stateValue === "open";
+        return { on: stateValue === "on" || stateValue === "open" };
 
       case "lock":
-        return stateValue === "locked";
+        return { on: stateValue === "locked" };
 
       case "sensor":
         // Generic sensor - try to parse as number
         const numValue = parseFloat(stateValue);
         if (!isNaN(numValue)) {
-          return numValue;
+          return { value: numValue };
         }
-        return stateValue;
-
-      case "color":
-        // Color is special - we can't send RGB as a single value
-        // For now, skip color updates or handle separately
-        return null;
+        return { value: stateValue };
 
       default:
         return null;
