@@ -2,30 +2,30 @@
  * Cloud device capability types
  */
 export type CloudCapabilityType =
-  | 'switch'
-  | 'brightness'
-  | 'color_temp'
-  | 'color'
-  | 'temperature'
-  | 'humidity'
-  | 'battery'
-  | 'power'
-  | 'energy'
-  | 'position'
-  | 'volume'
-  | 'media_control'
-  | 'mode'
-  | 'preset'
-  | 'motion'
-  | 'door'
-  | 'window'
-  | 'lock'
-  | 'sensor'; // Generic sensor without specific type
+  | "switch"
+  | "brightness"
+  | "color_temp"
+  | "color"
+  | "temperature"
+  | "humidity"
+  | "battery"
+  | "power"
+  | "energy"
+  | "position"
+  | "volume"
+  | "media_control"
+  | "mode"
+  | "preset"
+  | "motion"
+  | "door"
+  | "window"
+  | "lock"
+  | "sensor"; // Generic sensor without specific type
 
 /**
  * Cloud capability value types
  */
-export type CloudValueType = 'boolean' | 'number' | 'string' | 'object';
+export type CloudValueType = "boolean" | "number" | "string" | "object";
 
 /**
  * Cloud capability current value - varies by capability type
@@ -63,28 +63,28 @@ export interface CloudCapability {
  * Cloud device type mapping - matches domain DeviceType
  */
 export type CloudDeviceType =
-  | 'light'
-  | 'switch'
-  | 'sensor'
-  | 'binary_sensor'
-  | 'climate'
-  | 'cover'
-  | 'fan'
-  | 'media_player'
-  | 'camera'
-  | 'lock'
-  | 'vacuum'
-  | 'speaker'
-  | 'tv'
-  | 'thermostat'
-  | 'door'
-  | 'window'
-  | 'motion'
-  | 'temperature'
-  | 'humidity'
-  | 'power'
-  | 'battery'
-  | 'unknown';
+  | "light"
+  | "switch"
+  | "sensor"
+  | "binary_sensor"
+  | "climate"
+  | "cover"
+  | "fan"
+  | "media_player"
+  | "camera"
+  | "lock"
+  | "vacuum"
+  | "speaker"
+  | "tv"
+  | "thermostat"
+  | "door"
+  | "window"
+  | "motion"
+  | "temperature"
+  | "humidity"
+  | "power"
+  | "battery"
+  | "unknown";
 
 /**
  * Cloud device format for sync
@@ -176,4 +176,48 @@ export interface DeviceControlResponse {
   entityId?: string;
   message: string;
   error?: string;
+}
+
+/**
+ * Request to fetch devices from cloud (used after reconnection)
+ */
+export interface DevicesFetchRequest {
+  /** Dumio Device ID to identify the agent */
+  dumioDeviceId: string;
+}
+
+/**
+ * Response from cloud when fetching devices
+ */
+export interface DevicesFetchResponse {
+  success: boolean;
+  /** Home ID associated with this agent */
+  homeId?: string;
+  /** Devices stored in cloud for this home */
+  devices?: Array<{
+    deviceId: string;
+    entityIds: string[];
+    deviceType: CloudDeviceType;
+    name: string;
+  }>;
+  error?: string;
+}
+
+/**
+ * Capabilities updated event from cloud
+ * Sent when capabilities are updated externally (e.g., from another agent or app)
+ */
+export interface CapabilitiesUpdatedPayload {
+  /** Device ID that was updated */
+  deviceId: string;
+  /** Entity ID that was updated */
+  entityId: string;
+  /** Type of capability that changed */
+  capabilityType: CloudCapabilityType;
+  /** New value to apply */
+  value: CloudCapabilityValue;
+  /** Source of the update (for filtering out own updates) */
+  source?: "cloud" | "app" | "agent";
+  /** Timestamp of the update */
+  timestamp: string;
 }

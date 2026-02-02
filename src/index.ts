@@ -95,11 +95,15 @@ async function main(): Promise<void> {
     );
   }
 
+  // Get configured device ID (only if explicitly set) - needed for Agent config
+  const dumioDeviceId = getDumioDeviceId(config.agent.dumioDeviceId);
+
   // Initialize Agent with optional cloud client
   const agent = new Agent(haClient, logger.child({ component: "Agent" }), {
     name: config.agent.name,
     subscribeOnConnect: true,
     cloudClient: cloudClient ?? undefined,
+    dumioDeviceId: dumioDeviceId ?? undefined,
   });
 
   // Initialize HTTP Server for API access
@@ -172,9 +176,6 @@ async function main(): Promise<void> {
       httpServer.onConnectionChange(state);
     },
   };
-
-  // Get configured device ID (only if explicitly set)
-  const dumioDeviceId = getDumioDeviceId(config.agent.dumioDeviceId);
 
   if (dumioDeviceId) {
     logger.info("Dumio Device ID configured", { dumioDeviceId });
@@ -324,6 +325,91 @@ async function main(): Promise<void> {
             success: result.success,
             message: result.message,
           });
+        });
+
+        // Handle cloud reconnection - attempt to restore sync state
+        cloudClient.onConnectionStateChange(async (state) => {
+          if (state === "connected") {
+            logger.info(
+              "Cloud reconnected, checking for sync state restoration"
+            );
+
+            // Check if there's an existing sync manager that needs restoration
+            const syncManager = agent.getCapabilitySyncManager();
+            if (syncManager && !syncManager.active) {
+              logger.info("Attempting to restore sync state from cloud");
+
+              try {
+                const restored = await agent.restoreSyncFromCloud();
+                if (restored) {
+                  logger.info(
+                    "Sync state restored successfully after reconnection"
+                  );
+                } else {
+                  logger.info(
+                    "No devices found in cloud, waiting for manual sync via /api/devices/sync"
+                  );
+                }
+              } catch (error) {
+                logger.error(
+                  "Failed to restore sync state after reconnection",
+                  {
+                    error:
+                      error instanceof Error ? error.message : "Unknown error",
+                  }
+                );
+              }
+            } else if (!syncManager && dumioDeviceId) {
+              // No sync manager yet, but we have a dumioDeviceId
+              // Try to fetch devices from cloud to see if we should auto-initialize
+              logger.info(
+                "No active sync manager, attempting to fetch devices from cloud"
+              );
+
+              try {
+                const response = await cloudClient.emitWithCallback(
+                  "devices:fetch",
+                  { dumioDeviceId },
+                  30000
+                );
+
+                if (
+                  response.success &&
+                  response.devices &&
+                  response.devices.length > 0 &&
+                  response.homeId
+                ) {
+                  logger.info("Devices found in cloud, triggering sync", {
+                    homeId: response.homeId,
+                    deviceCount: response.devices.length,
+                  });
+
+                  // Trigger a full sync with the homeId from cloud
+                  const syncResult = await agent.syncDevicesToCloud(
+                    response.homeId
+                  );
+                  if (syncResult.success) {
+                    logger.info("Auto-sync completed after reconnection", {
+                      syncedDevices: syncResult.syncedDevices,
+                      watching: syncResult.watching,
+                    });
+                  }
+                } else {
+                  logger.info(
+                    "No devices found in cloud for this agent, waiting for manual sync"
+                  );
+                }
+              } catch (error) {
+                logger.error(
+                  "Failed to fetch devices from cloud on reconnection",
+                  {
+                    error:
+                      error instanceof Error ? error.message : "Unknown error",
+                  }
+                );
+              }
+            }
+          }
         });
       } catch (error) {
         logger.error("Failed to connect to cloud", { error });

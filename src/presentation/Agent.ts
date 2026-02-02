@@ -1,6 +1,9 @@
-import type { IHomeAssistantClient, ConnectionState } from '../domain/ports/IHomeAssistantClient.js';
-import type { ICloudClient } from '../domain/ports/ICloudClient.js';
-import type { ILogger } from '../domain/ports/ILogger.js';
+import type {
+  IHomeAssistantClient,
+  ConnectionState,
+} from "../domain/ports/IHomeAssistantClient.js";
+import type { ICloudClient } from "../domain/ports/ICloudClient.js";
+import type { ILogger } from "../domain/ports/ILogger.js";
 import type {
   EntityState,
   HAEventMessage,
@@ -11,7 +14,7 @@ import type {
   Room,
   RoomWithDevices,
   HomeOverview,
-} from '../domain/index.js';
+} from "../domain/index.js";
 import {
   ConnectToHomeAssistant,
   CallService,
@@ -21,20 +24,28 @@ import {
   GetDevices,
   GetRooms,
   SyncDevicesToCloud,
-  DeviceStateWatcher,
-  DeviceController,
-} from '../application/index.js';
-import type { DeviceControlCommand, DeviceControlResponse } from '../domain/entities/CloudDevice.js';
+  CapabilitySyncManager,
+} from "../application/index.js";
+import type {
+  DeviceControlCommand,
+  DeviceControlResponse,
+} from "../domain/entities/CloudDevice.js";
 
 export interface AgentConfig {
   name: string;
   autoReconnect?: boolean;
   subscribeOnConnect?: boolean;
   cloudClient?: ICloudClient;
+  /** Dumio device ID for cloud sync features */
+  dumioDeviceId?: string;
 }
 
 export interface AgentEventHandlers {
-  onStateChange?: (entityId: string, oldState: EntityState | null, newState: EntityState) => void;
+  onStateChange?: (
+    entityId: string,
+    oldState: EntityState | null,
+    newState: EntityState
+  ) => void;
   onEvent?: (event: HAEventMessage) => void;
   onConnectionChange?: (state: ConnectionState) => void;
 }
@@ -51,8 +62,7 @@ export class Agent {
   private getDevicesUseCase: GetDevices;
   private getRoomsUseCase: GetRooms;
   private eventSubscription?: { unsubscribe: () => Promise<void> };
-  private deviceStateWatcher?: DeviceStateWatcher;
-  private deviceController?: DeviceController;
+  private capabilitySyncManager?: CapabilitySyncManager;
 
   constructor(
     private readonly haClient: IHomeAssistantClient,
@@ -68,14 +78,14 @@ export class Agent {
     this.getDevicesUseCase = new GetDevices(haClient, logger);
     this.getRoomsUseCase = new GetRooms(haClient, logger);
 
-    this.logger.info('Agent initialized', { name: config.name });
+    this.logger.info("Agent initialized", { name: config.name });
   }
 
   /**
    * Start the agent and connect to Home Assistant
    */
   async start(handlers?: AgentEventHandlers): Promise<void> {
-    this.logger.info('Starting agent', { name: this.config.name });
+    this.logger.info("Starting agent", { name: this.config.name });
 
     // Register connection state handler
     if (handlers?.onConnectionChange) {
@@ -87,7 +97,7 @@ export class Agent {
       subscribeToStateChanges: this.config.subscribeOnConnect,
     });
 
-    this.logger.info('Connected to Home Assistant', {
+    this.logger.info("Connected to Home Assistant", {
       version: connectResult.haVersion,
       entityCount: connectResult.entityCount,
     });
@@ -100,14 +110,14 @@ export class Agent {
       });
     }
 
-    this.logger.info('Agent started successfully');
+    this.logger.info("Agent started successfully");
   }
 
   /**
    * Stop the agent and disconnect
    */
   async stop(): Promise<void> {
-    this.logger.info('Stopping agent');
+    this.logger.info("Stopping agent");
 
     // Unsubscribe from events
     if (this.eventSubscription) {
@@ -117,7 +127,7 @@ export class Agent {
     // Disconnect from Home Assistant
     await this.haClient.disconnect();
 
-    this.logger.info('Agent stopped');
+    this.logger.info("Agent stopped");
   }
 
   /**
@@ -178,56 +188,63 @@ export class Agent {
    * Turn on a light
    */
   async turnOnLight(entityId: string, brightness?: number): Promise<void> {
-    await this.callService('light', 'turn_on', entityId, brightness ? { brightness } : undefined);
+    await this.callService(
+      "light",
+      "turn_on",
+      entityId,
+      brightness ? { brightness } : undefined
+    );
   }
 
   /**
    * Turn off a light
    */
   async turnOffLight(entityId: string): Promise<void> {
-    await this.callService('light', 'turn_off', entityId);
+    await this.callService("light", "turn_off", entityId);
   }
 
   /**
    * Toggle a light
    */
   async toggleLight(entityId: string): Promise<void> {
-    await this.callService('light', 'toggle', entityId);
+    await this.callService("light", "toggle", entityId);
   }
 
   /**
    * Turn on a switch
    */
   async turnOnSwitch(entityId: string): Promise<void> {
-    await this.callService('switch', 'turn_on', entityId);
+    await this.callService("switch", "turn_on", entityId);
   }
 
   /**
    * Turn off a switch
    */
   async turnOffSwitch(entityId: string): Promise<void> {
-    await this.callService('switch', 'turn_off', entityId);
+    await this.callService("switch", "turn_off", entityId);
   }
 
   /**
    * Set climate temperature
    */
   async setTemperature(entityId: string, temperature: number): Promise<void> {
-    await this.callService('climate', 'set_temperature', entityId, { temperature });
+    await this.callService("climate", "set_temperature", entityId, {
+      temperature,
+    });
   }
 
   /**
    * Run a script
    */
   async runScript(entityId: string): Promise<void> {
-    await this.callService('script', 'turn_on', entityId);
+    await this.callService("script", "turn_on", entityId);
   }
 
   /**
    * Activate a scene
    */
   async activateScene(entityId: string): Promise<void> {
-    await this.callService('scene', 'turn_on', entityId);
+    await this.callService("scene", "turn_on", entityId);
   }
 
   // ============================================================
@@ -291,7 +308,11 @@ export class Agent {
   /**
    * Get device stats
    */
-  async getDeviceStats(): Promise<{ total: number; online: number; on: number }> {
+  async getDeviceStats(): Promise<{
+    total: number;
+    online: number;
+    on: number;
+  }> {
     const result = await this.getDevicesUseCase.execute({});
     return {
       total: result.count,
@@ -359,7 +380,7 @@ export class Agent {
   /**
    * Sync devices to cloud
    * Fetches devices from HA, transforms them to cloud format, and emits to cloud
-   * After successful sync, starts watching for real-time state changes
+   * After successful sync, starts watching for real-time state changes and listening for cloud updates
    */
   async syncDevicesToCloud(homeId: string): Promise<{
     success: boolean;
@@ -367,25 +388,25 @@ export class Agent {
     watching: boolean;
     error?: string;
   }> {
-    this.logger.info('syncDevicesToCloud called', { 
-      homeId, 
+    this.logger.info("syncDevicesToCloud called", {
+      homeId,
       hasCloudClient: !!this.config.cloudClient,
-      cloudClientState: this.config.cloudClient?.connectionState 
+      cloudClientState: this.config.cloudClient?.connectionState,
     });
 
     if (!this.config.cloudClient) {
-      this.logger.warn('Cloud client not configured for sync');
+      this.logger.warn("Cloud client not configured for sync");
       return {
         success: false,
         syncedDevices: 0,
         watching: false,
-        error: 'Cloud client not configured',
+        error: "Cloud client not configured",
       };
     }
 
-    if (this.config.cloudClient.connectionState !== 'connected') {
-      this.logger.warn('Cloud client not connected', { 
-        state: this.config.cloudClient.connectionState 
+    if (this.config.cloudClient.connectionState !== "connected") {
+      this.logger.warn("Cloud client not connected", {
+        state: this.config.cloudClient.connectionState,
       });
       return {
         success: false,
@@ -404,101 +425,149 @@ export class Agent {
 
       const result = await syncUseCase.execute({ homeId });
 
-      // If sync was successful, initialize and start the state watcher
+      // If sync was successful, initialize the capability sync manager
       if (result.success && result.devices) {
-        this.initializeStateWatcher(homeId, result.devices);
+        this.initializeCapabilitySyncManager(homeId, result.devices);
       }
 
       return {
         success: result.success,
         syncedDevices: result.syncedDevices,
-        watching: this.deviceStateWatcher?.active ?? false,
+        watching: this.capabilitySyncManager?.active ?? false,
         error: result.error ?? result.response?.error,
       };
     } catch (error) {
-      this.logger.error('syncDevicesToCloud failed', error);
+      this.logger.error("syncDevicesToCloud failed", error);
       return {
         success: false,
         syncedDevices: 0,
         watching: false,
-        error: error instanceof Error ? error.message : 'Unknown sync error',
+        error: error instanceof Error ? error.message : "Unknown sync error",
       };
     }
   }
 
   /**
-   * Initialize the device state watcher and controller after a successful sync
+   * Initialize the capability sync manager after a successful sync
+   * This handles bidirectional sync: HA -> Cloud and Cloud -> HA
    */
-  private initializeStateWatcher(homeId: string, devices: import('../domain/entities/CloudDevice.js').CloudDevice[]): void {
+  private initializeCapabilitySyncManager(
+    homeId: string,
+    devices: import("../domain/entities/CloudDevice.js").CloudDevice[]
+  ): void {
     if (!this.config.cloudClient) {
       return;
     }
 
-    // Stop existing watcher if any
-    if (this.deviceStateWatcher) {
-      this.deviceStateWatcher.reset();
+    // Stop existing manager if any
+    if (this.capabilitySyncManager) {
+      this.capabilitySyncManager.reset();
     }
 
-    // Create new watcher
-    this.deviceStateWatcher = new DeviceStateWatcher(
+    // Create new capability sync manager
+    this.capabilitySyncManager = new CapabilitySyncManager(
       this.haClient,
       this.config.cloudClient,
-      this.logger
+      this.logger,
+      {
+        dumioDeviceId: this.config.dumioDeviceId ?? this.config.name,
+        autoRestoreOnReconnect: true,
+      }
     );
 
-    // Initialize with synced devices and start watching
-    this.deviceStateWatcher.initializeFromSync(homeId, devices);
-    this.deviceStateWatcher.startWatching();
+    // Initialize with synced devices
+    this.capabilitySyncManager.initializeFromSync(homeId, devices);
 
-    // Initialize device controller for receiving commands
-    this.deviceController = new DeviceController(this.haClient, this.logger);
-    this.deviceController.initializeFromSync(devices);
-
-    this.logger.info('Device state watcher and controller started after sync', {
+    const stats = this.capabilitySyncManager.getStats();
+    this.logger.info("CapabilitySyncManager initialized after sync", {
       homeId,
-      watchingEntities: this.deviceStateWatcher.mappingCount,
-      controllableDevices: this.deviceController.mappingCount,
+      watchingEntities: stats.watcherStats?.updatesSent ?? 0,
+      controllableDevices: stats.controllerMappings,
     });
   }
 
   /**
-   * Stop the device state watcher
+   * Get the capability sync manager for external access
    */
-  stopStateWatcher(): void {
-    if (this.deviceStateWatcher) {
-      this.deviceStateWatcher.reset();
-      this.logger.info('Device state watcher stopped');
+  getCapabilitySyncManager(): CapabilitySyncManager | undefined {
+    return this.capabilitySyncManager;
+  }
+
+  /**
+   * Attempt to restore sync state from cloud (called after reconnection)
+   */
+  async restoreSyncFromCloud(): Promise<boolean> {
+    if (!this.capabilitySyncManager) {
+      this.logger.warn("Cannot restore sync: no sync manager initialized");
+      return false;
+    }
+
+    return this.capabilitySyncManager.restoreSyncStateFromCloud();
+  }
+
+  /**
+   * Stop the capability sync manager
+   */
+  stopCapabilitySyncManager(): void {
+    if (this.capabilitySyncManager) {
+      this.capabilitySyncManager.reset();
+      this.capabilitySyncManager = undefined;
+      this.logger.info("CapabilitySyncManager stopped");
     }
   }
 
   /**
-   * Check if state watcher is active
+   * Check if capability sync manager is active
    */
-  isStateWatcherActive(): boolean {
-    return this.deviceStateWatcher?.active ?? false;
+  isCapabilitySyncActive(): boolean {
+    return this.capabilitySyncManager?.active ?? false;
   }
 
   /**
    * Control a device (execute a command from cloud)
    */
-  async controlDevice(command: DeviceControlCommand): Promise<DeviceControlResponse> {
-    if (!this.deviceController) {
-      this.logger.warn('Device controller not initialized. Run sync first.');
+  async controlDevice(
+    command: DeviceControlCommand
+  ): Promise<DeviceControlResponse> {
+    const controller = this.capabilitySyncManager?.controller;
+
+    if (!controller) {
+      this.logger.warn("Device controller not initialized. Run sync first.");
       return {
         success: false,
         deviceId: command.deviceId,
-        message: 'Device controller not initialized',
-        error: 'Run devices sync first to initialize device mappings',
+        message: "Device controller not initialized",
+        error: "Run devices sync first to initialize device mappings",
       };
     }
 
-    return this.deviceController.execute(command);
+    return controller.execute(command);
   }
 
   /**
    * Check if device controller is ready
    */
   isDeviceControllerReady(): boolean {
-    return (this.deviceController?.mappingCount ?? 0) > 0;
+    return (this.capabilitySyncManager?.controller?.mappingCount ?? 0) > 0;
+  }
+
+  /**
+   * Get sync statistics
+   */
+  getSyncStats(): {
+    isActive: boolean;
+    homeId: string | null;
+    deviceCount: number;
+    watcherStats: {
+      eventsReceived: number;
+      updatesSkipped: number;
+      updatesSent: number;
+    } | null;
+    controllerMappings: number;
+  } | null {
+    if (!this.capabilitySyncManager) {
+      return null;
+    }
+    return this.capabilitySyncManager.getStats();
   }
 }
