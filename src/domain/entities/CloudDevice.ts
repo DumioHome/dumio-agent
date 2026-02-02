@@ -119,12 +119,44 @@ export interface DevicesSyncRequest {
 }
 
 /**
+ * Synced device info returned from cloud
+ */
+export interface SyncedDeviceInfo {
+  /** UUID de Dumio - usar este para capability:update */
+  id: string;
+  /** deviceId de HA que enviaste */
+  deviceId: string;
+  /** entityIds que enviaste */
+  entityIds: string[];
+  deviceType: string;
+  name: string;
+  model: string | null;
+  manufacturer: string | null;
+  capabilities: Array<{
+    id: string;
+    capabilityType: CloudCapabilityType;
+    valueType: CloudValueType;
+    currentValue: boolean | number | string | null;
+    meta: CloudCapabilityMeta | null;
+  }>;
+  /** true si se creó, false si se actualizó */
+  isNew: boolean;
+}
+
+/**
  * Devices sync response callback data
  */
 export interface DevicesSyncCallbackResponse {
   success: boolean;
   data?: {
-    devices: Array<{ id: string; deviceType: string; name: string }>;
+    homeId: string;
+    summary: {
+      total: number;
+      created: number;
+      updated: number;
+      skipped: number;
+    };
+    devices: SyncedDeviceInfo[];
   };
   error?: string;
 }
@@ -139,18 +171,24 @@ export interface DevicesSyncPayload {
 
 /**
  * Capability update payload for real-time state changes
+ * Sent to cloud when a device capability changes in HA
  */
 export interface CapabilityUpdatePayload {
-  /** Physical device ID */
+  /** UUID de Dumio del device (NOT the HA deviceId) */
   deviceId: string;
-  /** Entity ID that changed */
-  entityId: string;
   /** Type of capability that changed */
   capabilityType: CloudCapabilityType;
-  /** New value */
-  currentValue: CloudCapabilityValue;
-  /** Timestamp of the change */
-  timestamp: string;
+  /** New value - direct value (true, 75, "heat", etc.) NOT wrapped in object */
+  currentValue: boolean | number | string | null;
+}
+
+/**
+ * Capability update response from cloud
+ */
+export interface CapabilityUpdateResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
 }
 
 /**

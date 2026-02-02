@@ -2,6 +2,7 @@ import type {
   DevicesSyncPayload,
   DevicesSyncCallbackResponse,
   CapabilityUpdatePayload,
+  CapabilityUpdateResponse,
   DeviceControlCommand,
   DeviceControlResponse,
   DevicesFetchRequest,
@@ -58,15 +59,13 @@ export interface CloudEventMap {
 }
 
 /**
- * Cloud response types (events sent TO cloud)
+ * Cloud response types (events sent TO cloud without callback)
  */
 export interface CloudResponseMap {
   "health:update": AgentHealthData;
   "devices:response": unknown[];
   "rooms:response": unknown[];
   "command:result": { success: boolean; message: string; data?: unknown };
-  /** Real-time capability state update */
-  "capability:update": CapabilityUpdatePayload;
   /** Response to device control command */
   "device:control:response": DeviceControlResponse;
 }
@@ -83,6 +82,11 @@ export interface CloudEmitWithCallbackMap {
   "devices:fetch": {
     payload: DevicesFetchRequest;
     response: DevicesFetchResponse;
+  };
+  /** Real-time capability state update (with callback) */
+  "capability:update": {
+    payload: CapabilityUpdatePayload;
+    response: CapabilityUpdateResponse;
   };
 }
 

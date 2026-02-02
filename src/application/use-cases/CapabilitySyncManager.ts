@@ -6,9 +6,8 @@ import type {
 import type { ILogger } from "../../domain/ports/ILogger.js";
 import type {
   CloudDevice,
+  SyncedDeviceInfo,
   CapabilitiesUpdatedPayload,
-  CloudCapabilityType,
-  CloudCapabilityValue,
 } from "../../domain/entities/CloudDevice.js";
 import { DeviceStateWatcher } from "./DeviceStateWatcher.js";
 import { DeviceController } from "./DeviceController.js";
@@ -19,7 +18,10 @@ import { SyncDevicesToCloud } from "./SyncDevicesToCloud.js";
  */
 interface SyncState {
   homeId: string;
-  devices: CloudDevice[];
+  /** Devices with Dumio UUIDs from sync response */
+  syncedDevices: SyncedDeviceInfo[];
+  /** Original HA devices for controller */
+  haDevices: CloudDevice[];
   syncedAt: number;
 }
 
@@ -69,32 +71,42 @@ export class CapabilitySyncManager {
   /**
    * Initialize the sync manager after a successful manual sync
    * This is called after /api/devices/sync completes successfully
+   *
+   * @param homeId - The home ID
+   * @param syncedDevices - Devices from cloud response with Dumio UUIDs
+   * @param haDevices - Original HA devices for controller mappings
    */
-  initializeFromSync(homeId: string, devices: CloudDevice[]): void {
+  initializeFromSync(
+    homeId: string,
+    syncedDevices: SyncedDeviceInfo[],
+    haDevices: CloudDevice[]
+  ): void {
     this.logger.info("Initializing CapabilitySyncManager from sync", {
       homeId,
-      deviceCount: devices.length,
+      syncedDeviceCount: syncedDevices.length,
+      haDeviceCount: haDevices.length,
     });
 
     // Store sync state for potential restoration
     this.syncState = {
       homeId,
-      devices,
+      syncedDevices,
+      haDevices,
       syncedAt: Date.now(),
     };
 
-    // Initialize device state watcher (HA -> Cloud)
+    // Initialize device state watcher (HA -> Cloud) with Dumio UUIDs
     this.deviceStateWatcher = new DeviceStateWatcher(
       this.haClient,
       this.cloudClient,
       this.logger
     );
-    this.deviceStateWatcher.initializeFromSync(homeId, devices);
+    this.deviceStateWatcher.initializeFromSyncResponse(homeId, syncedDevices);
     this.deviceStateWatcher.startWatching();
 
-    // Initialize device controller (Cloud -> HA)
+    // Initialize device controller (Cloud -> HA) with HA device mappings
     this.deviceController = new DeviceController(this.haClient, this.logger);
-    this.deviceController.initializeFromSync(devices);
+    this.deviceController.initializeFromSync(haDevices);
 
     // Register cloud event handlers
     this.registerCloudEventHandlers();
@@ -261,7 +273,11 @@ export class CapabilitySyncManager {
 
       const syncResult = await syncUseCase.execute({ homeId });
 
-      if (!syncResult.success || !syncResult.devices) {
+      if (
+        !syncResult.success ||
+        !syncResult.haDevices ||
+        !syncResult.syncedDevices_info
+      ) {
         this.logger.error("Failed to re-sync devices to cloud", {
           error: syncResult.error,
         });
@@ -269,7 +285,11 @@ export class CapabilitySyncManager {
       }
 
       // Re-initialize with the fresh sync data
-      this.reinitializeFromSync(homeId, syncResult.devices);
+      this.reinitializeFromSync(
+        homeId,
+        syncResult.syncedDevices_info,
+        syncResult.haDevices
+      );
 
       this.logger.info("Sync state restored successfully", {
         homeId,
@@ -288,7 +308,11 @@ export class CapabilitySyncManager {
   /**
    * Re-initialize the manager with new sync data (used during restore)
    */
-  private reinitializeFromSync(homeId: string, devices: CloudDevice[]): void {
+  private reinitializeFromSync(
+    homeId: string,
+    syncedDevices: SyncedDeviceInfo[],
+    haDevices: CloudDevice[]
+  ): void {
     // Stop existing watchers
     if (this.deviceStateWatcher) {
       this.deviceStateWatcher.reset();
@@ -297,22 +321,23 @@ export class CapabilitySyncManager {
     // Update sync state
     this.syncState = {
       homeId,
-      devices,
+      syncedDevices,
+      haDevices,
       syncedAt: Date.now(),
     };
 
-    // Re-initialize device state watcher
+    // Re-initialize device state watcher with Dumio UUIDs
     this.deviceStateWatcher = new DeviceStateWatcher(
       this.haClient,
       this.cloudClient,
       this.logger
     );
-    this.deviceStateWatcher.initializeFromSync(homeId, devices);
+    this.deviceStateWatcher.initializeFromSyncResponse(homeId, syncedDevices);
     this.deviceStateWatcher.startWatching();
 
-    // Re-initialize device controller
+    // Re-initialize device controller with HA device mappings
     this.deviceController = new DeviceController(this.haClient, this.logger);
-    this.deviceController.initializeFromSync(devices);
+    this.deviceController.initializeFromSync(haDevices);
 
     this.logger.info("CapabilitySyncManager re-initialized", {
       homeId,
@@ -338,7 +363,7 @@ export class CapabilitySyncManager {
   } {
     return {
       homeId: this.syncState?.homeId ?? null,
-      deviceCount: this.syncState?.devices.length ?? 0,
+      deviceCount: this.syncState?.syncedDevices.length ?? 0,
       syncedAt: this.syncState?.syncedAt ?? null,
     };
   }
@@ -399,13 +424,14 @@ export class CapabilitySyncManager {
       eventsReceived: number;
       updatesSkipped: number;
       updatesSent: number;
+      updatesFailed: number;
     } | null;
     controllerMappings: number;
   } {
     return {
       isActive: this.active,
       homeId: this.syncState?.homeId ?? null,
-      deviceCount: this.syncState?.devices.length ?? 0,
+      deviceCount: this.syncState?.syncedDevices.length ?? 0,
       watcherStats: this.deviceStateWatcher?.getStats() ?? null,
       controllerMappings: this.deviceController?.mappingCount ?? 0,
     };

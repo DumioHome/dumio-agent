@@ -8,6 +8,7 @@ import type {
 import type { ILogger } from "../../domain/ports/ILogger.js";
 import type {
   CloudDevice,
+  SyncedDeviceInfo,
   CapabilitiesUpdatedPayload,
 } from "../../domain/entities/CloudDevice.js";
 
@@ -49,9 +50,10 @@ const createMockCloudClient = (
   onConnectionStateChange: vi.fn(),
 });
 
-const createMockDevices = (): CloudDevice[] => [
+// Mock HA devices (CloudDevice format - what we send to cloud)
+const createMockHaDevices = (): CloudDevice[] => [
   {
-    deviceId: "device-1",
+    deviceId: "ha-device-1",
     entityIds: ["light.living_room"],
     deviceType: "light",
     name: "Living Room Light",
@@ -75,7 +77,7 @@ const createMockDevices = (): CloudDevice[] => [
     ],
   },
   {
-    deviceId: "device-2",
+    deviceId: "ha-device-2",
     entityIds: ["sensor.temperature"],
     deviceType: "sensor",
     name: "Temperature Sensor",
@@ -94,18 +96,69 @@ const createMockDevices = (): CloudDevice[] => [
   },
 ];
 
+// Mock synced devices (SyncedDeviceInfo format - what cloud returns with Dumio UUIDs)
+const createMockSyncedDevices = (): SyncedDeviceInfo[] => [
+  {
+    id: "550e8400-e29b-41d4-a716-446655440001", // Dumio UUID
+    deviceId: "ha-device-1", // HA device ID
+    entityIds: ["light.living_room"],
+    deviceType: "light",
+    name: "Living Room Light",
+    model: "Smart Bulb",
+    manufacturer: "Test",
+    capabilities: [
+      {
+        id: "cap-uuid-1",
+        capabilityType: "switch",
+        valueType: "boolean",
+        currentValue: true,
+        meta: null,
+      },
+      {
+        id: "cap-uuid-2",
+        capabilityType: "brightness",
+        valueType: "number",
+        currentValue: 75,
+        meta: { min: 0, max: 100, unit: "%" },
+      },
+    ],
+    isNew: true,
+  },
+  {
+    id: "550e8400-e29b-41d4-a716-446655440002", // Dumio UUID
+    deviceId: "ha-device-2", // HA device ID
+    entityIds: ["sensor.temperature"],
+    deviceType: "sensor",
+    name: "Temperature Sensor",
+    model: "Temp Sensor",
+    manufacturer: "Test",
+    capabilities: [
+      {
+        id: "cap-uuid-3",
+        capabilityType: "temperature",
+        valueType: "number",
+        currentValue: 22.5,
+        meta: { unit: "°C" },
+      },
+    ],
+    isNew: true,
+  },
+];
+
 describe("CapabilitySyncManager", () => {
   let manager: CapabilitySyncManager;
   let mockHaClient: IHomeAssistantClient;
   let mockCloudClient: ICloudClient;
   let mockLogger: ILogger;
-  let mockDevices: CloudDevice[];
+  let mockHaDevices: CloudDevice[];
+  let mockSyncedDevices: SyncedDeviceInfo[];
 
   beforeEach(() => {
     mockHaClient = createMockHaClient();
     mockCloudClient = createMockCloudClient();
     mockLogger = createMockLogger();
-    mockDevices = createMockDevices();
+    mockHaDevices = createMockHaDevices();
+    mockSyncedDevices = createMockSyncedDevices();
 
     manager = new CapabilitySyncManager(
       mockHaClient,
@@ -131,7 +184,7 @@ describe("CapabilitySyncManager", () => {
     });
 
     it("should initialize from sync with devices", () => {
-      manager.initializeFromSync("home-123", mockDevices);
+      manager.initializeFromSync("home-123", mockSyncedDevices, mockHaDevices);
 
       expect(manager.active).toBe(true);
       expect(manager.syncInfo.homeId).toBe("home-123");
@@ -143,7 +196,7 @@ describe("CapabilitySyncManager", () => {
     });
 
     it("should register cloud event handlers on initialization", () => {
-      manager.initializeFromSync("home-123", mockDevices);
+      manager.initializeFromSync("home-123", mockSyncedDevices, mockHaDevices);
 
       expect(mockCloudClient.on).toHaveBeenCalledWith(
         "capabilities:updated",
@@ -152,7 +205,7 @@ describe("CapabilitySyncManager", () => {
     });
 
     it("should register connection state handler for auto-restore", () => {
-      manager.initializeFromSync("home-123", mockDevices);
+      manager.initializeFromSync("home-123", mockSyncedDevices, mockHaDevices);
 
       expect(mockCloudClient.onConnectionStateChange).toHaveBeenCalledWith(
         expect.any(Function)
@@ -162,7 +215,7 @@ describe("CapabilitySyncManager", () => {
 
   describe("capabilities:updated handling", () => {
     it("should handle capabilities:updated event from cloud", async () => {
-      manager.initializeFromSync("home-123", mockDevices);
+      manager.initializeFromSync("home-123", mockSyncedDevices, mockHaDevices);
 
       // Get the registered handler
       const onCall = vi.mocked(mockCloudClient.on);
@@ -174,7 +227,7 @@ describe("CapabilitySyncManager", () => {
 
       // Simulate receiving a capabilities:updated event
       await capabilitiesHandler({
-        deviceId: "device-1",
+        deviceId: "550e8400-e29b-41d4-a716-446655440001",
         entityId: "light.living_room",
         capabilityType: "switch",
         value: { on: false },
@@ -189,7 +242,7 @@ describe("CapabilitySyncManager", () => {
     });
 
     it("should skip capabilities:updated from own agent to avoid feedback loops", async () => {
-      manager.initializeFromSync("home-123", mockDevices);
+      manager.initializeFromSync("home-123", mockSyncedDevices, mockHaDevices);
 
       const onCall = vi.mocked(mockCloudClient.on);
       const capabilitiesHandler = onCall.mock.calls.find(
@@ -197,7 +250,7 @@ describe("CapabilitySyncManager", () => {
       )?.[1] as (data: CapabilitiesUpdatedPayload) => void;
 
       await capabilitiesHandler({
-        deviceId: "device-1",
+        deviceId: "550e8400-e29b-41d4-a716-446655440001",
         entityId: "light.living_room",
         capabilityType: "switch",
         value: { on: false },
@@ -213,7 +266,7 @@ describe("CapabilitySyncManager", () => {
 
   describe("reset", () => {
     it("should reset all state and handlers", () => {
-      manager.initializeFromSync("home-123", mockDevices);
+      manager.initializeFromSync("home-123", mockSyncedDevices, mockHaDevices);
 
       expect(manager.active).toBe(true);
 
@@ -231,7 +284,7 @@ describe("CapabilitySyncManager", () => {
 
   describe("getStats", () => {
     it("should return correct stats when initialized", () => {
-      manager.initializeFromSync("home-123", mockDevices);
+      manager.initializeFromSync("home-123", mockSyncedDevices, mockHaDevices);
 
       const stats = manager.getStats();
 
@@ -259,7 +312,7 @@ describe("CapabilitySyncManager", () => {
         homeId: "home-123",
         devices: [
           {
-            deviceId: "device-1",
+            deviceId: "ha-device-1",
             entityIds: ["light.test"],
             deviceType: "light",
             name: "Test",
@@ -268,7 +321,7 @@ describe("CapabilitySyncManager", () => {
       });
 
       // First initialize
-      manager.initializeFromSync("home-123", mockDevices);
+      manager.initializeFromSync("home-123", mockSyncedDevices, mockHaDevices);
       manager.reset();
 
       // Re-create manager to simulate reconnection
@@ -337,7 +390,11 @@ describe("CapabilitySyncManager", () => {
         }
       );
 
-      managerNoAutoRestore.initializeFromSync("home-123", mockDevices);
+      managerNoAutoRestore.initializeFromSync(
+        "home-123",
+        mockSyncedDevices,
+        mockHaDevices
+      );
 
       // Should still register capabilities:updated handler
       expect(mockCloudClient.on).toHaveBeenCalledWith(
