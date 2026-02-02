@@ -108,6 +108,7 @@ export interface DeviceCapabilities {
  */
 export interface DeviceSummary {
   id: string;
+  entityId: string;
   name: string;
   type: DeviceType;
   roomName: string | null;

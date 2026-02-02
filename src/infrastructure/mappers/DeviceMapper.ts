@@ -370,7 +370,8 @@ export class DeviceMapper {
     return {
       id: deviceInfo?.id ?? entity.entity_id,
       entityId: entity.entity_id,
-      name: deviceInfo?.name_by_user ?? deviceInfo?.name ?? friendlyName,
+      // Prioritize entity's friendly_name as it's what users typically customize
+      name: friendlyName,
       type,
       roomId: areaInfo?.area_id ?? deviceInfo?.area_id ?? null,
       roomName: areaInfo?.name ?? null,
@@ -391,6 +392,7 @@ export class DeviceMapper {
   static mapToSummary(device: Device): DeviceSummary {
     return {
       id: device.id,
+      entityId: device.entityId,
       name: device.name,
       type: device.type,
       roomName: device.roomName,

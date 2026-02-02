@@ -35,18 +35,30 @@ Dumio Agent es un agente inteligente para Home Assistant que permite controlar t
 
 ## Opciones de configuración
 
-| Opción | Descripción | Valores | Por defecto |
-|--------|-------------|---------|-------------|
-| `log_level` | Nivel de detalle de logs | trace, debug, info, warn, error, fatal | info |
-| `reconnect_interval` | Tiempo entre intentos de reconexión (ms) | 1000-60000 | 5000 |
-| `max_reconnect_attempts` | Máximo de intentos de reconexión | 1-100 | 10 |
-| `cloud_socket_url` | URL del servidor Dumio Cloud | URL o vacío | (vacío) |
-| `cloud_api_key` | API Key para Dumio Cloud | String o vacío | (vacío) |
-| `enable_api` | Habilitar API REST | true/false | true |
+| Opción                   | Descripción                                           | Valores                                | Por defecto     |
+| ------------------------ | ----------------------------------------------------- | -------------------------------------- | --------------- |
+| `dumio_device_id`        | ID único del dispositivo para identificación en cloud | String o vacío                         | (auto-generado) |
+| `log_level`              | Nivel de detalle de logs                              | trace, debug, info, warn, error, fatal | info            |
+| `reconnect_interval`     | Tiempo entre intentos de reconexión (ms)              | 1000-60000                             | 5000            |
+| `max_reconnect_attempts` | Máximo de intentos de reconexión                      | 1-100                                  | 10              |
+| `cloud_socket_url`       | URL del servidor Dumio Cloud                          | URL o vacío                            | (vacío)         |
+| `cloud_api_key`          | API Key para Dumio Cloud                              | String o vacío                         | (vacío)         |
+| `enable_api`             | Habilitar API REST                                    | true/false                             | true            |
+
+### Dumio Device ID
+
+El `dumio_device_id` es el identificador único del agente en el cloud de Dumio. Este ID se usa para:
+
+- **Identificar el dispositivo**: El cloud verifica si el dispositivo ya existe en la base de datos
+- **Reutilizar configuraciones**: Si el ID ya existe, se reutiliza la configuración existente
+- **Nuevos dispositivos**: Si el ID no existe, se crea un nuevo registro en el cloud
+
+Si no configuras un `dumio_device_id`, el sistema generará uno automáticamente. Sin embargo, se recomienda configurar uno fijo para mantener la consistencia del dispositivo entre reinicios.
 
 ### Ejemplo de configuración
 
 ```yaml
+dumio_device_id: "dumio-mi-casa-principal"
 log_level: info
 reconnect_interval: 5000
 max_reconnect_attempts: 10
@@ -70,13 +82,13 @@ El addon expone una API REST para integración con otros sistemas. Está disponi
 
 ### Endpoints disponibles
 
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/health` | Estado de salud del addon |
-| GET | `/api/devices` | Lista de dispositivos |
-| GET | `/api/devices/:id` | Detalle de un dispositivo |
-| GET | `/api/rooms` | Lista de habitaciones |
-| POST | `/api/command` | Ejecutar comando |
+| Método | Endpoint           | Descripción               |
+| ------ | ------------------ | ------------------------- |
+| GET    | `/health`          | Estado de salud del addon |
+| GET    | `/api/devices`     | Lista de dispositivos     |
+| GET    | `/api/devices/:id` | Detalle de un dispositivo |
+| GET    | `/api/rooms`       | Lista de habitaciones     |
+| POST   | `/api/command`     | Ejecutar comando          |
 
 ### Ejemplo de uso
 

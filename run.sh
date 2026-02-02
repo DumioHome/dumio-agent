@@ -41,6 +41,12 @@ export MAX_RECONNECT_ATTEMPTS=$(bashio::config 'max_reconnect_attempts' '10')
 ENABLE_API=$(bashio::config 'enable_api' 'true')
 export ENABLE_API
 
+# Dumio Device ID (optional - if not set, will be auto-generated)
+if bashio::config.has_value 'dumio_device_id'; then
+    export DUMIO_DEVICE_ID=$(bashio::config 'dumio_device_id')
+    bashio::log.info "Dumio Device ID configured: ${DUMIO_DEVICE_ID}"
+fi
+
 # Cloud configuration (optional)
 if bashio::config.has_value 'cloud_socket_url'; then
     export CLOUD_SOCKET_URL=$(bashio::config 'cloud_socket_url')
@@ -61,6 +67,11 @@ export NODE_ENV="production"
 # ------------------------------------------------------------------------------
 bashio::log.info "----------------------------------------------"
 bashio::log.info "Configuration:"
+if [ -n "${DUMIO_DEVICE_ID:-}" ]; then
+    bashio::log.info "  Dumio Device ID:        ${DUMIO_DEVICE_ID}"
+else
+    bashio::log.info "  Dumio Device ID:        (auto-generated)"
+fi
 bashio::log.info "  Log Level:              ${LOG_LEVEL}"
 bashio::log.info "  Reconnect Interval:     ${RECONNECT_INTERVAL}ms"
 bashio::log.info "  Max Reconnect Attempts: ${MAX_RECONNECT_ATTEMPTS}"
