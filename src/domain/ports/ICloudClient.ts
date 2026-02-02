@@ -1,15 +1,22 @@
-import type { 
-  DevicesSyncPayload, 
-  DevicesSyncCallbackResponse, 
+import type {
+  DevicesSyncPayload,
+  DevicesSyncCallbackResponse,
   CapabilityUpdatePayload,
   DeviceControlCommand,
   DeviceControlResponse,
-} from '../entities/CloudDevice.js';
+  DevicesFetchRequest,
+  DevicesFetchResponse,
+  CapabilitiesUpdatedPayload,
+} from "../entities/CloudDevice.js";
 
 /**
  * Cloud connection state
  */
-export type CloudConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
+export type CloudConnectionState =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
 
 /**
  * Agent health data to send to cloud
@@ -18,7 +25,7 @@ export interface AgentHealthData {
   /** Unique device identifier (dumio-{random}) */
   dumioDeviceId: string;
   /** Current status of Home Assistant connection */
-  status: 'online' | 'offline' | 'connecting' | 'error';
+  status: "online" | "offline" | "connecting" | "error";
   /** Timestamp of the health update */
   timestamp: string;
   /** Home Assistant connection details */
@@ -40,35 +47,42 @@ export interface AgentHealthData {
  * Cloud event types (events received FROM cloud)
  */
 export interface CloudEventMap {
-  'health:request': void;
-  'command:execute': { command: string; params?: Record<string, unknown> };
-  'devices:request': { filter?: Record<string, unknown> };
-  'rooms:request': void;
+  "health:request": void;
+  "command:execute": { command: string; params?: Record<string, unknown> };
+  "devices:request": { filter?: Record<string, unknown> };
+  "rooms:request": void;
   /** Control a device (turn on/off, set brightness, etc.) */
-  'device:control': DeviceControlCommand;
+  "device:control": DeviceControlCommand;
+  /** Capabilities updated from cloud (sent when capabilities change externally) */
+  "capabilities:updated": CapabilitiesUpdatedPayload;
 }
 
 /**
  * Cloud response types (events sent TO cloud)
  */
 export interface CloudResponseMap {
-  'health:update': AgentHealthData;
-  'devices:response': unknown[];
-  'rooms:response': unknown[];
-  'command:result': { success: boolean; message: string; data?: unknown };
+  "health:update": AgentHealthData;
+  "devices:response": unknown[];
+  "rooms:response": unknown[];
+  "command:result": { success: boolean; message: string; data?: unknown };
   /** Real-time capability state update */
-  'capability:update': CapabilityUpdatePayload;
+  "capability:update": CapabilityUpdatePayload;
   /** Response to device control command */
-  'device:control:response': DeviceControlResponse;
+  "device:control:response": DeviceControlResponse;
 }
 
 /**
  * Cloud emit with callback types
  */
 export interface CloudEmitWithCallbackMap {
-  'devices:sync': {
+  "devices:sync": {
     payload: DevicesSyncPayload;
     response: DevicesSyncCallbackResponse;
+  };
+  /** Fetch devices from cloud (used after reconnection) */
+  "devices:fetch": {
+    payload: DevicesFetchRequest;
+    response: DevicesFetchResponse;
   };
 }
 
@@ -99,26 +113,35 @@ export interface ICloudClient {
   /**
    * Send a generic event to the cloud
    */
-  emit<K extends keyof CloudResponseMap>(event: K, data: CloudResponseMap[K]): void;
+  emit<K extends keyof CloudResponseMap>(
+    event: K,
+    data: CloudResponseMap[K]
+  ): void;
 
   /**
    * Send an event with callback to receive response from cloud
    */
   emitWithCallback<K extends keyof CloudEmitWithCallbackMap>(
     event: K,
-    data: CloudEmitWithCallbackMap[K]['payload'],
+    data: CloudEmitWithCallbackMap[K]["payload"],
     timeout?: number
-  ): Promise<CloudEmitWithCallbackMap[K]['response']>;
+  ): Promise<CloudEmitWithCallbackMap[K]["response"]>;
 
   /**
    * Register handler for incoming cloud events
    */
-  on<K extends keyof CloudEventMap>(event: K, handler: (data: CloudEventMap[K]) => void): void;
+  on<K extends keyof CloudEventMap>(
+    event: K,
+    handler: (data: CloudEventMap[K]) => void
+  ): void;
 
   /**
    * Remove handler for incoming cloud events
    */
-  off<K extends keyof CloudEventMap>(event: K, handler: (data: CloudEventMap[K]) => void): void;
+  off<K extends keyof CloudEventMap>(
+    event: K,
+    handler: (data: CloudEventMap[K]) => void
+  ): void;
 
   /**
    * Register handler for connection state changes

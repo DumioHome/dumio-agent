@@ -1,4 +1,4 @@
-import { io, Socket } from 'socket.io-client';
+import { io, Socket } from "socket.io-client";
 import type {
   ICloudClient,
   CloudConnectionState,
@@ -6,8 +6,8 @@ import type {
   CloudEventMap,
   CloudResponseMap,
   CloudEmitWithCallbackMap,
-} from '../../domain/ports/ICloudClient.js';
-import type { ILogger } from '../../domain/ports/ILogger.js';
+} from "../../domain/ports/ICloudClient.js";
+import type { ILogger } from "../../domain/ports/ILogger.js";
 
 export interface CloudClientConfig {
   socketUrl: string;
@@ -23,19 +23,21 @@ export interface CloudClientConfig {
  */
 export class CloudClient implements ICloudClient {
   private socket: Socket | null = null;
-  private _connectionState: CloudConnectionState = 'disconnected';
-  private connectionStateHandlers: Array<(state: CloudConnectionState) => void> = [];
+  private _connectionState: CloudConnectionState = "disconnected";
+  private connectionStateHandlers: Array<
+    (state: CloudConnectionState) => void
+  > = [];
   private healthInterval: NodeJS.Timeout | null = null;
-  
+
   // Smart health reporting - only send when changes detected
   private lastHealthData: AgentHealthData | null = null;
-  private lastHealthHash: string = '';
+  private lastHealthHash: string = "";
 
   constructor(
     private readonly config: CloudClientConfig,
     private readonly logger: ILogger
   ) {
-    this.logger.info('CloudClient initialized', {
+    this.logger.info("CloudClient initialized", {
       socketUrl: config.socketUrl,
       agentId: config.agentId,
     });
@@ -75,17 +77,17 @@ export class CloudClient implements ICloudClient {
     if (this._connectionState !== state) {
       this._connectionState = state;
       this.connectionStateHandlers.forEach((handler) => handler(state));
-      this.logger.info('Cloud connection state changed', { state });
+      this.logger.info("Cloud connection state changed", { state });
     }
   }
 
   async connect(): Promise<void> {
     if (this.socket?.connected) {
-      this.logger.debug('Already connected to cloud');
+      this.logger.debug("Already connected to cloud");
       return;
     }
 
-    this.setConnectionState('connecting');
+    this.setConnectionState("connecting");
 
     return new Promise((resolve, reject) => {
       try {
@@ -98,50 +100,52 @@ export class CloudClient implements ICloudClient {
           reconnectionAttempts: this.config.reconnectionAttempts ?? 10,
           reconnectionDelay: this.config.reconnectionDelay ?? 5000,
           timeout: 10000,
-          transports: ['websocket', 'polling'],
+          transports: ["websocket", "polling"],
         });
 
-        this.socket.on('connect', () => {
-          this.logger.info('Connected to cloud', {
+        this.socket.on("connect", () => {
+          this.logger.info("Connected to cloud", {
             socketId: this.socket?.id,
             agentId: this.config.agentId,
           });
-          this.setConnectionState('connected');
+          this.setConnectionState("connected");
           resolve();
         });
 
-        this.socket.on('disconnect', (reason) => {
-          this.logger.warn('Disconnected from cloud', { reason });
-          this.setConnectionState('disconnected');
+        this.socket.on("disconnect", (reason) => {
+          this.logger.warn("Disconnected from cloud", { reason });
+          this.setConnectionState("disconnected");
         });
 
-        this.socket.on('connect_error', (error) => {
-          this.logger.error('Cloud connection error', { error: error.message });
-          this.setConnectionState('error');
-          if (this._connectionState === 'connecting') {
+        this.socket.on("connect_error", (error) => {
+          this.logger.error("Cloud connection error", { error: error.message });
+          this.setConnectionState("error");
+          if (this._connectionState === "connecting") {
             reject(error);
           }
         });
 
-        this.socket.on('reconnect', (attemptNumber) => {
-          this.logger.info('Reconnected to cloud', { attemptNumber });
-          this.setConnectionState('connected');
+        this.socket.on("reconnect", (attemptNumber) => {
+          this.logger.info("Reconnected to cloud", { attemptNumber });
+          this.setConnectionState("connected");
         });
 
-        this.socket.on('reconnect_attempt', (attemptNumber) => {
-          this.logger.debug('Attempting to reconnect to cloud', { attemptNumber });
-          this.setConnectionState('connecting');
+        this.socket.on("reconnect_attempt", (attemptNumber) => {
+          this.logger.debug("Attempting to reconnect to cloud", {
+            attemptNumber,
+          });
+          this.setConnectionState("connecting");
         });
 
-        this.socket.on('reconnect_failed', () => {
-          this.logger.error('Failed to reconnect to cloud after max attempts');
-          this.setConnectionState('error');
+        this.socket.on("reconnect_failed", () => {
+          this.logger.error("Failed to reconnect to cloud after max attempts");
+          this.setConnectionState("error");
         });
 
         // Handle incoming events from cloud
         this.setupCloudEventHandlers();
       } catch (error) {
-        this.setConnectionState('error');
+        this.setConnectionState("error");
         reject(error);
       }
     });
@@ -156,44 +160,49 @@ export class CloudClient implements ICloudClient {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
-      this.setConnectionState('disconnected');
-      this.logger.info('Disconnected from cloud');
+      this.setConnectionState("disconnected");
+      this.logger.info("Disconnected from cloud");
     }
   }
 
   sendHealth(data: AgentHealthData): void {
     if (!this.socket?.connected) {
-      this.logger.debug('Cannot send health: not connected to cloud');
+      this.logger.debug("Cannot send health: not connected to cloud");
       return;
     }
 
-    this.socket.emit('health:update', data);
-    this.logger.debug('Health data sent to cloud', {
+    this.socket.emit("health:update", data);
+    this.logger.debug("Health data sent to cloud", {
       dumioDeviceId: data.dumioDeviceId,
       status: data.status,
       haConnected: data.homeAssistant.connected,
     });
   }
 
-  emit<K extends keyof CloudResponseMap>(event: K, data: CloudResponseMap[K]): void {
+  emit<K extends keyof CloudResponseMap>(
+    event: K,
+    data: CloudResponseMap[K]
+  ): void {
     if (!this.socket?.connected) {
-      this.logger.debug('Cannot emit: not connected to cloud', { event });
+      this.logger.debug("Cannot emit: not connected to cloud", { event });
       return;
     }
 
     this.socket.emit(event, data);
-    this.logger.debug('Event emitted to cloud', { event });
+    this.logger.debug("Event emitted to cloud", { event });
   }
 
   emitWithCallback<K extends keyof CloudEmitWithCallbackMap>(
     event: K,
-    data: CloudEmitWithCallbackMap[K]['payload'],
+    data: CloudEmitWithCallbackMap[K]["payload"],
     timeout: number = 30000
-  ): Promise<CloudEmitWithCallbackMap[K]['response']> {
+  ): Promise<CloudEmitWithCallbackMap[K]["response"]> {
     return new Promise((resolve, reject) => {
       if (!this.socket?.connected) {
-        this.logger.debug('Cannot emit with callback: not connected to cloud', { event });
-        reject(new Error('Not connected to cloud'));
+        this.logger.debug("Cannot emit with callback: not connected to cloud", {
+          event,
+        });
+        reject(new Error("Not connected to cloud"));
         return;
       }
 
@@ -201,19 +210,31 @@ export class CloudClient implements ICloudClient {
         reject(new Error(`Timeout waiting for response to ${event}`));
       }, timeout);
 
-      this.socket.emit(event, data, (response: CloudEmitWithCallbackMap[K]['response']) => {
-        clearTimeout(timeoutId);
-        this.logger.debug('Received callback response from cloud', { event, success: response?.success });
-        resolve(response);
-      });
+      this.socket.emit(
+        event,
+        data,
+        (response: CloudEmitWithCallbackMap[K]["response"]) => {
+          clearTimeout(timeoutId);
+          this.logger.debug("Received callback response from cloud", {
+            event,
+            success: response?.success,
+          });
+          resolve(response);
+        }
+      );
 
-      this.logger.debug('Event emitted to cloud with callback', { event });
+      this.logger.debug("Event emitted to cloud with callback", { event });
     });
   }
 
-  on<K extends keyof CloudEventMap>(event: K, handler: (data: CloudEventMap[K]) => void): void {
+  on<K extends keyof CloudEventMap>(
+    event: K,
+    handler: (data: CloudEventMap[K]) => void
+  ): void {
     if (!this.socket) {
-      this.logger.warn('Cannot register handler: socket not initialized', { event });
+      this.logger.warn("Cannot register handler: socket not initialized", {
+        event,
+      });
       return;
     }
 
@@ -221,7 +242,10 @@ export class CloudClient implements ICloudClient {
     this.socket.on(event as string, handler as any);
   }
 
-  off<K extends keyof CloudEventMap>(event: K, handler: (data: CloudEventMap[K]) => void): void {
+  off<K extends keyof CloudEventMap>(
+    event: K,
+    handler: (data: CloudEventMap[K]) => void
+  ): void {
     if (!this.socket) {
       return;
     }
@@ -230,7 +254,9 @@ export class CloudClient implements ICloudClient {
     this.socket.off(event as string, handler as any);
   }
 
-  onConnectionStateChange(handler: (state: CloudConnectionState) => void): void {
+  onConnectionStateChange(
+    handler: (state: CloudConnectionState) => void
+  ): void {
     this.connectionStateHandlers.push(handler);
   }
 
@@ -246,32 +272,32 @@ export class CloudClient implements ICloudClient {
       this.lastHealthHash = this.hashHealthData(data);
       this.lastHealthData = data;
       this.sendHealth(data);
-      this.logger.info('Initial health data sent to cloud');
+      this.logger.info("Initial health data sent to cloud");
     });
 
     // Set up periodic check - only sends if changes detected
     this.healthInterval = setInterval(async () => {
       try {
         const data = await getHealthData();
-        
+
         if (this.hasHealthChanged(data)) {
           this.sendHealth(data);
-          this.logger.info('Health data changed, sent to cloud', {
+          this.logger.info("Health data changed, sent to cloud", {
             status: data.status,
             haConnected: data.homeAssistant.connected,
             entityCount: data.homeAssistant.entityCount,
           });
         } else {
-          this.logger.debug('Health data unchanged, skipping send');
+          this.logger.debug("Health data unchanged, skipping send");
         }
       } catch (error) {
-        this.logger.error('Failed to get health data', { error });
+        this.logger.error("Failed to get health data", { error });
       }
     }, intervalMs);
 
-    this.logger.info('Smart health reporting started', { 
+    this.logger.info("Smart health reporting started", {
       intervalMs,
-      description: 'Only sends updates when changes are detected'
+      description: "Only sends updates when changes are detected",
     });
   }
 
@@ -282,48 +308,75 @@ export class CloudClient implements ICloudClient {
     this.lastHealthHash = this.hashHealthData(data);
     this.lastHealthData = data;
     this.sendHealth(data);
-    this.logger.info('Health data force-sent to cloud');
+    this.logger.info("Health data force-sent to cloud");
   }
 
   private setupCloudEventHandlers(): void {
     if (!this.socket) return;
 
     // Handle health request from cloud
-    this.socket.on('health:request', () => {
-      this.logger.debug('Health request received from cloud');
+    this.socket.on("health:request", () => {
+      this.logger.debug("Health request received from cloud");
       // This will be handled by the registered handler in the application layer
     });
 
     // Handle command execution request from cloud
-    this.socket.on('command:execute', (data: CloudEventMap['command:execute']) => {
-      this.logger.debug('Command received from cloud', { command: data.command });
-      // This will be handled by the registered handler in the application layer
-    });
+    this.socket.on(
+      "command:execute",
+      (data: CloudEventMap["command:execute"]) => {
+        this.logger.debug("Command received from cloud", {
+          command: data.command,
+        });
+        // This will be handled by the registered handler in the application layer
+      }
+    );
 
     // Handle devices request from cloud
-    this.socket.on('devices:request', (data: CloudEventMap['devices:request']) => {
-      this.logger.debug('Devices request received from cloud', { filter: data.filter });
-      // This will be handled by the registered handler in the application layer
-    });
+    this.socket.on(
+      "devices:request",
+      (data: CloudEventMap["devices:request"]) => {
+        this.logger.debug("Devices request received from cloud", {
+          filter: data.filter,
+        });
+        // This will be handled by the registered handler in the application layer
+      }
+    );
 
     // Handle rooms request from cloud
-    this.socket.on('rooms:request', () => {
-      this.logger.debug('Rooms request received from cloud');
+    this.socket.on("rooms:request", () => {
+      this.logger.debug("Rooms request received from cloud");
       // This will be handled by the registered handler in the application layer
     });
 
     // Handle device control command from cloud
-    this.socket.on('device:control', (data: CloudEventMap['device:control']) => {
-      this.logger.debug('Device control command received from cloud', { 
-        deviceId: data.deviceId,
-        capabilityType: data.capabilityType,
-      });
-      // This will be handled by the registered handler in the application layer
-    });
+    this.socket.on(
+      "device:control",
+      (data: CloudEventMap["device:control"]) => {
+        this.logger.debug("Device control command received from cloud", {
+          deviceId: data.deviceId,
+          capabilityType: data.capabilityType,
+        });
+        // This will be handled by the registered handler in the application layer
+      }
+    );
+
+    // Handle capabilities updated event from cloud
+    this.socket.on(
+      "capabilities:updated",
+      (data: CloudEventMap["capabilities:updated"]) => {
+        this.logger.debug("Capabilities updated received from cloud", {
+          deviceId: data.deviceId,
+          entityId: data.entityId,
+          capabilityType: data.capabilityType,
+          source: data.source,
+        });
+        // This will be handled by the registered handler in the application layer
+      }
+    );
 
     // Handle any custom events
     this.socket.onAny((event, ...args) => {
-      this.logger.trace('Cloud event received', { event, args });
+      this.logger.trace("Cloud event received", { event, args });
     });
   }
 }
