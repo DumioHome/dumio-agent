@@ -178,8 +178,8 @@ export interface CapabilityUpdatePayload {
   deviceId: string;
   /** Type of capability that changed */
   capabilityType: CloudCapabilityType;
-  /** New value - direct value (true, 75, "heat", etc.) NOT wrapped in object */
-  currentValue: boolean | number | string | null;
+  /** New value wrapped in object: { on: true }, { value: 75 }, { r, g, b }, etc. */
+  currentValue: CloudCapabilityValue;
 }
 
 /**
