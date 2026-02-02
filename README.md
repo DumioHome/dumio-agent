@@ -7,11 +7,11 @@ Agente inteligente para Home Assistant que utiliza WebSocket para comunicación 
 
 ## Modos de Operación
 
-| Modo | Descripción | Autenticación |
-|------|-------------|---------------|
-| **Add-on HA** | Integración nativa con Home Assistant | Automática (Supervisor Token) |
-| **Standalone** | Ejecución independiente | Token manual (.env) |
-| **Docker** | Contenedor pre-construido | Token manual (env vars) |
+| Modo           | Descripción                           | Autenticación                 |
+| -------------- | ------------------------------------- | ----------------------------- |
+| **Add-on HA**  | Integración nativa con Home Assistant | Automática (Supervisor Token) |
+| **Standalone** | Ejecución independiente               | Token manual (.env)           |
+| **Docker**     | Contenedor pre-construido             | Token manual (env vars)       |
 
 ## Características
 
@@ -111,6 +111,9 @@ HA_ACCESS_TOKEN=your_long_lived_access_token_here
 AGENT_NAME=dumio-agent
 LOG_LEVEL=info
 
+# Dumio Device ID (optional - if not set, will be auto-generated)
+# DUMIO_DEVICE_ID=dumio-my-custom-id
+
 # Reconnection settings
 RECONNECT_INTERVAL=5000
 MAX_RECONNECT_ATTEMPTS=10
@@ -154,27 +157,27 @@ npm run test:coverage
 ## Uso Programático
 
 ```typescript
-import { Agent, HomeAssistantClient, PinoLogger } from 'dumio-agent';
+import { Agent, HomeAssistantClient, PinoLogger } from "dumio-agent";
 
 // Crear logger
 const logger = new PinoLogger({
-  name: 'my-agent',
-  level: 'info',
+  name: "my-agent",
+  level: "info",
   pretty: true,
 });
 
 // Crear cliente de Home Assistant
 const haClient = new HomeAssistantClient(
   {
-    url: 'ws://homeassistant.local:8123/api/websocket',
-    accessToken: 'your_token_here',
+    url: "ws://homeassistant.local:8123/api/websocket",
+    accessToken: "your_token_here",
   },
   logger
 );
 
 // Crear agente
 const agent = new Agent(haClient, logger, {
-  name: 'my-agent',
+  name: "my-agent",
   subscribeOnConnect: true,
 });
 
@@ -189,15 +192,15 @@ await agent.start({
 });
 
 // Usar el agente
-await agent.turnOnLight('light.living_room');
-await agent.setTemperature('climate.thermostat', 22);
+await agent.turnOnLight("light.living_room");
+await agent.setTemperature("climate.thermostat", 22);
 
-const lights = await agent.getEntitiesByDomain('light');
-console.log('Lights:', lights);
+const lights = await agent.getEntitiesByDomain("light");
+console.log("Lights:", lights);
 
 // Procesar comandos de voz/texto
-const response = await agent.processConversation('Turn off all lights');
-console.log('Response:', response.speech);
+const response = await agent.processConversation("Turn off all lights");
+console.log("Response:", response.speech);
 
 // Detener agente
 await agent.stop();
@@ -207,27 +210,27 @@ await agent.stop();
 
 ### Métodos principales
 
-| Método | Descripción |
-|--------|-------------|
-| `start(handlers?)` | Inicia el agente y conecta a Home Assistant |
-| `stop()` | Detiene el agente y desconecta |
-| `callService(domain, service, entityId?, data?)` | Llama a un servicio |
-| `getState(entityId?)` | Obtiene el estado de entidades |
-| `getEntitiesByDomain(domain)` | Obtiene entidades por dominio |
-| `processConversation(text, conversationId?)` | Procesa comando de voz/texto |
+| Método                                           | Descripción                                 |
+| ------------------------------------------------ | ------------------------------------------- |
+| `start(handlers?)`                               | Inicia el agente y conecta a Home Assistant |
+| `stop()`                                         | Detiene el agente y desconecta              |
+| `callService(domain, service, entityId?, data?)` | Llama a un servicio                         |
+| `getState(entityId?)`                            | Obtiene el estado de entidades              |
+| `getEntitiesByDomain(domain)`                    | Obtiene entidades por dominio               |
+| `processConversation(text, conversationId?)`     | Procesa comando de voz/texto                |
 
 ### Métodos de conveniencia
 
-| Método | Descripción |
-|--------|-------------|
-| `turnOnLight(entityId, brightness?)` | Enciende una luz |
-| `turnOffLight(entityId)` | Apaga una luz |
-| `toggleLight(entityId)` | Alterna una luz |
-| `turnOnSwitch(entityId)` | Enciende un switch |
-| `turnOffSwitch(entityId)` | Apaga un switch |
+| Método                                  | Descripción           |
+| --------------------------------------- | --------------------- |
+| `turnOnLight(entityId, brightness?)`    | Enciende una luz      |
+| `turnOffLight(entityId)`                | Apaga una luz         |
+| `toggleLight(entityId)`                 | Alterna una luz       |
+| `turnOnSwitch(entityId)`                | Enciende un switch    |
+| `turnOffSwitch(entityId)`               | Apaga un switch       |
 | `setTemperature(entityId, temperature)` | Configura temperatura |
-| `runScript(entityId)` | Ejecuta un script |
-| `activateScene(entityId)` | Activa una escena |
+| `runScript(entityId)`                   | Ejecuta un script     |
+| `activateScene(entityId)`               | Activa una escena     |
 
 ## Casos de Uso
 
@@ -262,8 +265,8 @@ Este proyecto está preparado para instalarse como add-on nativo de Home Assista
 Las opciones disponibles en la configuración del add-on:
 
 ```yaml
-log_level: info           # trace, debug, info, warn, error, fatal
-reconnect_interval: 5000  # ms entre intentos de reconexión
+log_level: info # trace, debug, info, warn, error, fatal
+reconnect_interval: 5000 # ms entre intentos de reconexión
 max_reconnect_attempts: 10
 ```
 
@@ -389,6 +392,7 @@ HA_URL=ws://192.168.1.100:8123/api/websocket
 ### Recursos y límites
 
 El contenedor está configurado con límites de recursos por defecto:
+
 - CPU: máximo 0.5 cores
 - Memoria: máximo 256MB
 

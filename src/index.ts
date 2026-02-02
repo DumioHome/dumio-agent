@@ -1,17 +1,17 @@
-import { createServer } from 'http';
-import { loadConfig, validateConfig } from './infrastructure/config/Config.js';
-import { PinoLogger } from './infrastructure/logging/PinoLogger.js';
-import { HomeAssistantClient } from './infrastructure/websocket/HomeAssistantClient.js';
-import { CloudClient } from './infrastructure/cloud/CloudClient.js';
-import { getDumioDeviceId } from './infrastructure/utils/deviceId.js';
-import { Agent } from './presentation/Agent.js';
-import { HttpServer } from './presentation/HttpServer.js';
-import type { EntityState, HAEventMessage } from './domain/index.js';
-import type { ConnectionState } from './domain/ports/IHomeAssistantClient.js';
-import type { AgentHealthData } from './domain/ports/ICloudClient.js';
+import { createServer } from "http";
+import { loadConfig, validateConfig } from "./infrastructure/config/Config.js";
+import { PinoLogger } from "./infrastructure/logging/PinoLogger.js";
+import { HomeAssistantClient } from "./infrastructure/websocket/HomeAssistantClient.js";
+import { CloudClient } from "./infrastructure/cloud/CloudClient.js";
+import { getDumioDeviceId } from "./infrastructure/utils/deviceId.js";
+import { Agent } from "./presentation/Agent.js";
+import { HttpServer } from "./presentation/HttpServer.js";
+import type { EntityState, HAEventMessage } from "./domain/index.js";
+import type { ConnectionState } from "./domain/ports/IHomeAssistantClient.js";
+import type { AgentHealthData } from "./domain/ports/ICloudClient.js";
 
 // Agent version
-const AGENT_VERSION = '1.0.0';
+const AGENT_VERSION = "1.0.0";
 
 const HEALTH_CHECK_PORT = 8099;
 const HTTP_API_PORT = 3000;
@@ -19,11 +19,18 @@ const HTTP_API_PORT = 3000;
 /**
  * Start health check server for Home Assistant watchdog
  */
-function startHealthCheckServer(logger: ReturnType<typeof PinoLogger.prototype.child>): void {
+function startHealthCheckServer(
+  logger: ReturnType<typeof PinoLogger.prototype.child>
+): void {
   const server = createServer((req, res) => {
-    if (req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'healthy', timestamp: new Date().toISOString() }));
+    if (req.url === "/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          status: "healthy",
+          timestamp: new Date().toISOString(),
+        })
+      );
     } else {
       res.writeHead(404);
       res.end();
@@ -31,7 +38,7 @@ function startHealthCheckServer(logger: ReturnType<typeof PinoLogger.prototype.c
   });
 
   server.listen(HEALTH_CHECK_PORT, () => {
-    logger.debug('Health check server started', { port: HEALTH_CHECK_PORT });
+    logger.debug("Health check server started", { port: HEALTH_CHECK_PORT });
   });
 }
 
@@ -53,10 +60,10 @@ async function main(): Promise<void> {
   // Start time for uptime calculation
   const startTime = Date.now();
 
-  logger.info('Dumio Agent starting', {
+  logger.info("Dumio Agent starting", {
     name: config.agent.name,
-    mode: config.isAddon ? 'Home Assistant Add-on' : 'Standalone',
-    haUrl: config.isAddon ? '(supervisor internal)' : config.homeAssistant.url,
+    mode: config.isAddon ? "Home Assistant Add-on" : "Standalone",
+    haUrl: config.isAddon ? "(supervisor internal)" : config.homeAssistant.url,
   });
 
   // Start health check server (for add-on watchdog)
@@ -72,7 +79,7 @@ async function main(): Promise<void> {
       reconnectInterval: config.reconnection.interval,
       maxReconnectAttempts: config.reconnection.maxAttempts,
     },
-    logger.child({ component: 'HomeAssistantClient' })
+    logger.child({ component: "HomeAssistantClient" })
   );
 
   // Initialize Cloud Client (if configured) - before Agent so we can pass it
@@ -84,25 +91,21 @@ async function main(): Promise<void> {
         apiKey: config.cloud.apiKey,
         agentId: config.agent.name,
       },
-      logger.child({ component: 'CloudClient' })
+      logger.child({ component: "CloudClient" })
     );
   }
 
   // Initialize Agent with optional cloud client
-  const agent = new Agent(
-    haClient,
-    logger.child({ component: 'Agent' }),
-    {
-      name: config.agent.name,
-      subscribeOnConnect: true,
-      cloudClient: cloudClient ?? undefined,
-    }
-  );
+  const agent = new Agent(haClient, logger.child({ component: "Agent" }), {
+    name: config.agent.name,
+    subscribeOnConnect: true,
+    cloudClient: cloudClient ?? undefined,
+  });
 
   // Initialize HTTP Server for API access
   const httpServer = new HttpServer(
     agent,
-    logger.child({ component: 'HttpServer' }),
+    logger.child({ component: "HttpServer" }),
     { port: HTTP_API_PORT }
   );
 
@@ -115,8 +118,10 @@ async function main(): Promise<void> {
       uptime: Math.floor((Date.now() - startTime) / 1000),
       websocket: {
         state: haClient.connectionState,
-        connected: haClient.connectionState === 'connected',
-        url: config.isAddon ? 'ws://supervisor/core/websocket' : config.homeAssistant.url,
+        connected: haClient.connectionState === "connected",
+        url: config.isAddon
+          ? "ws://supervisor/core/websocket"
+          : config.homeAssistant.url,
       },
       homeAssistant: {
         entityCount: entities.length,
@@ -127,8 +132,12 @@ async function main(): Promise<void> {
 
   // Event handlers - notify httpServer of changes to invalidate cache
   const handlers = {
-    onStateChange: (entityId: string, _oldState: EntityState | null, newState: EntityState): void => {
-      logger.debug('State changed', {
+    onStateChange: (
+      entityId: string,
+      _oldState: EntityState | null,
+      newState: EntityState
+    ): void => {
+      logger.debug("State changed", {
         entityId,
         state: newState.state,
         attributes: Object.keys(newState.attributes),
@@ -137,53 +146,61 @@ async function main(): Promise<void> {
       // Only invalidate on significant changes like device added/removed
     },
     onEvent: (event: HAEventMessage): void => {
-      logger.trace('Event received', {
+      logger.trace("Event received", {
         eventType: event.event.event_type,
       });
-      
+
       // Invalidate cache on significant events
       const significantEvents = [
-        'device_registry_updated',
-        'entity_registry_updated', 
-        'area_registry_updated',
-        'homeassistant_start',
-        'homeassistant_stop',
+        "device_registry_updated",
+        "entity_registry_updated",
+        "area_registry_updated",
+        "homeassistant_start",
+        "homeassistant_stop",
       ];
-      
+
       if (significantEvents.includes(event.event.event_type)) {
-        logger.info('Significant event detected, invalidating cache', { 
-          eventType: event.event.event_type 
+        logger.info("Significant event detected, invalidating cache", {
+          eventType: event.event.event_type,
         });
         httpServer.invalidateCache();
       }
     },
     onConnectionChange: (state: ConnectionState): void => {
-      logger.info('Connection state changed', { state });
+      logger.info("Connection state changed", { state });
       // Notify httpServer to invalidate cache on connection change
       httpServer.onConnectionChange(state);
     },
   };
 
-  // Generate persistent device ID
-  const dumioDeviceId = getDumioDeviceId(config.isAddon);
-  logger.info('Dumio Device ID', { dumioDeviceId });
+  // Generate or use configured device ID
+  const dumioDeviceId = getDumioDeviceId(
+    config.isAddon,
+    config.agent.dumioDeviceId
+  );
+  logger.info("Dumio Device ID", {
+    dumioDeviceId,
+    source: config.agent.dumioDeviceId ? "configuration" : "auto-generated",
+  });
 
   /**
    * Map HA connection state to health status
    */
-  const mapConnectionToStatus = (state: ConnectionState): AgentHealthData['status'] => {
+  const mapConnectionToStatus = (
+    state: ConnectionState
+  ): AgentHealthData["status"] => {
     switch (state) {
-      case 'connected':
-        return 'online';
-      case 'connecting':
-      case 'authenticating':
-        return 'connecting';
-      case 'disconnected':
-        return 'offline';
-      case 'error':
-        return 'error';
+      case "connected":
+        return "online";
+      case "connecting":
+      case "authenticating":
+        return "connecting";
+      case "disconnected":
+        return "offline";
+      case "error":
+        return "error";
       default:
-        return 'offline';
+        return "offline";
     }
   };
 
@@ -199,7 +216,7 @@ async function main(): Promise<void> {
       status: mapConnectionToStatus(haClient.connectionState),
       timestamp: new Date().toISOString(),
       homeAssistant: {
-        connected: haClient.connectionState === 'connected',
+        connected: haClient.connectionState === "connected",
         entityCount: entities.length,
         deviceCount: stats.total,
       },
@@ -213,7 +230,7 @@ async function main(): Promise<void> {
 
   // Handle graceful shutdown
   const shutdown = async (): Promise<void> => {
-    logger.info('Shutting down...');
+    logger.info("Shutting down...");
     if (cloudClient) {
       await cloudClient.disconnect();
     }
@@ -222,8 +239,8 @@ async function main(): Promise<void> {
     process.exit(0);
   };
 
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 
   try {
     // Start the agent
@@ -234,7 +251,7 @@ async function main(): Promise<void> {
 
     // Log available entities count
     const stats = await agent.getDeviceStats();
-    logger.info('Connected to Home Assistant', {
+    logger.info("Connected to Home Assistant", {
       totalDevices: stats.total,
       onlineDevices: stats.online,
       activeDevices: stats.on,
@@ -244,101 +261,104 @@ async function main(): Promise<void> {
     if (cloudClient) {
       try {
         await cloudClient.connect();
-        logger.info('Connected to cloud', { url: config.cloud.socketUrl });
+        logger.info("Connected to cloud", { url: config.cloud.socketUrl });
 
         // Start health reporting (every 30 seconds)
         cloudClient.startHealthReporting(getHealthData, 30000);
 
         // Register cloud event handlers
-        cloudClient.on('health:request', async () => {
+        cloudClient.on("health:request", async () => {
           const healthData = await getHealthData();
           cloudClient?.sendHealth(healthData);
         });
 
-        cloudClient.on('devices:request', async (data) => {
+        cloudClient.on("devices:request", async (data) => {
           const devices = await agent.getDevices(data.filter);
-          cloudClient?.emit('devices:response', devices);
+          cloudClient?.emit("devices:response", devices);
         });
 
-        cloudClient.on('rooms:request', async () => {
+        cloudClient.on("rooms:request", async () => {
           const rooms = await agent.getRooms();
-          cloudClient?.emit('rooms:response', rooms);
+          cloudClient?.emit("rooms:response", rooms);
         });
 
-        cloudClient.on('command:execute', async (data) => {
+        cloudClient.on("command:execute", async (data) => {
           try {
-            const [domain, service] = data.command.split('.');
+            const [domain, service] = data.command.split(".");
             const result = await agent.callService(
               domain,
               service,
               data.params?.entity_id as string | undefined,
               data.params
             );
-            cloudClient?.emit('command:result', result);
+            cloudClient?.emit("command:result", result);
           } catch (error) {
-            cloudClient?.emit('command:result', {
+            cloudClient?.emit("command:result", {
               success: false,
-              message: error instanceof Error ? error.message : 'Unknown error',
+              message: error instanceof Error ? error.message : "Unknown error",
             });
           }
         });
 
         // Handle device control commands from cloud
-        cloudClient.on('device:control', async (command) => {
-          logger.info('Device control command received', {
+        cloudClient.on("device:control", async (command) => {
+          logger.info("Device control command received", {
             deviceId: command.deviceId,
             capabilityType: command.capabilityType,
             value: command.value,
           });
 
           const result = await agent.controlDevice(command);
-          cloudClient?.emit('device:control:response', result);
+          cloudClient?.emit("device:control:response", result);
 
-          logger.info('Device control command completed', {
+          logger.info("Device control command completed", {
             deviceId: command.deviceId,
             success: result.success,
             message: result.message,
           });
         });
       } catch (error) {
-        logger.error('Failed to connect to cloud', { error });
+        logger.error("Failed to connect to cloud", { error });
         // Continue running without cloud connection
       }
     }
 
     // Keep the process running
     if (config.isAddon) {
-      logger.info('Add-on is running and connected to Home Assistant');
+      logger.info("Add-on is running and connected to Home Assistant");
     } else {
-      logger.info(`Agent is running. API available at http://localhost:${HTTP_API_PORT}`);
+      logger.info(
+        `Agent is running. API available at http://localhost:${HTTP_API_PORT}`
+      );
       if (config.cloud.enabled) {
-        logger.info(`Cloud connection: ${cloudClient?.connectionState ?? 'disabled'}`);
+        logger.info(
+          `Cloud connection: ${cloudClient?.connectionState ?? "disabled"}`
+        );
       }
-      logger.info('Press Ctrl+C to stop.');
+      logger.info("Press Ctrl+C to stop.");
     }
 
     // The agent will keep running and processing events
     // until SIGINT or SIGTERM is received
-
   } catch (error) {
-    logger.fatal('Failed to start agent', error);
+    logger.fatal("Failed to start agent", error);
     process.exit(1);
   }
 }
 
 // Run the main function
 main().catch((error) => {
-  console.error('Unhandled error:', error);
+  console.error("Unhandled error:", error);
   process.exit(1);
 });
 
 // Export for programmatic use
-export { Agent } from './presentation/Agent.js';
-export { HttpServer } from './presentation/HttpServer.js';
-export { HomeAssistantClient } from './infrastructure/websocket/HomeAssistantClient.js';
-export { CloudClient } from './infrastructure/cloud/CloudClient.js';
-export { PinoLogger } from './infrastructure/logging/PinoLogger.js';
-export { loadConfig, validateConfig } from './infrastructure/config/Config.js';
-export { DeviceMapper, RoomMapper } from './infrastructure/mappers/index.js';
-export * from './domain/index.js';
-export * from './application/index.js';
+export { Agent } from "./presentation/Agent.js";
+export { HttpServer } from "./presentation/HttpServer.js";
+export { HomeAssistantClient } from "./infrastructure/websocket/HomeAssistantClient.js";
+export { CloudClient } from "./infrastructure/cloud/CloudClient.js";
+export { PinoLogger } from "./infrastructure/logging/PinoLogger.js";
+export { loadConfig, validateConfig } from "./infrastructure/config/Config.js";
+export { DeviceMapper, RoomMapper } from "./infrastructure/mappers/index.js";
+export * from "./domain/index.js";
+export * from "./application/index.js";
