@@ -173,15 +173,14 @@ async function main(): Promise<void> {
     },
   };
 
-  // Generate or use configured device ID
-  const dumioDeviceId = getDumioDeviceId(
-    config.isAddon,
-    config.agent.dumioDeviceId
-  );
-  logger.info("Dumio Device ID", {
-    dumioDeviceId,
-    source: config.agent.dumioDeviceId ? "configuration" : "auto-generated",
-  });
+  // Get configured device ID (only if explicitly set)
+  const dumioDeviceId = getDumioDeviceId(config.agent.dumioDeviceId);
+
+  if (dumioDeviceId) {
+    logger.info("Dumio Device ID configured", { dumioDeviceId });
+  } else {
+    logger.info("Dumio Device ID not configured - health reporting disabled");
+  }
 
   /**
    * Map HA connection state to health status
@@ -206,27 +205,30 @@ async function main(): Promise<void> {
 
   /**
    * Generate health data for cloud reporting
+   * Only available if dumioDeviceId is configured
    */
-  const getHealthData = async (): Promise<AgentHealthData> => {
-    const stats = await agent.getDeviceStats();
-    const entities = await agent.getState();
+  const getHealthData = dumioDeviceId
+    ? async (): Promise<AgentHealthData> => {
+        const stats = await agent.getDeviceStats();
+        const entities = await agent.getState();
 
-    return {
-      dumioDeviceId,
-      status: mapConnectionToStatus(haClient.connectionState),
-      timestamp: new Date().toISOString(),
-      homeAssistant: {
-        connected: haClient.connectionState === "connected",
-        entityCount: entities.length,
-        deviceCount: stats.total,
-      },
-      agent: {
-        name: config.agent.name,
-        version: AGENT_VERSION,
-        uptime: Math.floor((Date.now() - startTime) / 1000),
-      },
-    };
-  };
+        return {
+          dumioDeviceId,
+          status: mapConnectionToStatus(haClient.connectionState),
+          timestamp: new Date().toISOString(),
+          homeAssistant: {
+            connected: haClient.connectionState === "connected",
+            entityCount: entities.length,
+            deviceCount: stats.total,
+          },
+          agent: {
+            name: config.agent.name,
+            version: AGENT_VERSION,
+            uptime: Math.floor((Date.now() - startTime) / 1000),
+          },
+        };
+      }
+    : null;
 
   // Handle graceful shutdown
   const shutdown = async (): Promise<void> => {
@@ -263,14 +265,20 @@ async function main(): Promise<void> {
         await cloudClient.connect();
         logger.info("Connected to cloud", { url: config.cloud.socketUrl });
 
-        // Start health reporting (every 30 seconds)
-        cloudClient.startHealthReporting(getHealthData, 30000);
+        // Start health reporting only if dumioDeviceId is configured
+        if (getHealthData) {
+          cloudClient.startHealthReporting(getHealthData, 30000);
 
-        // Register cloud event handlers
-        cloudClient.on("health:request", async () => {
-          const healthData = await getHealthData();
-          cloudClient?.sendHealth(healthData);
-        });
+          // Register health request handler
+          cloudClient.on("health:request", async () => {
+            const healthData = await getHealthData();
+            cloudClient?.sendHealth(healthData);
+          });
+        } else {
+          logger.info(
+            "Health reporting disabled - no dumioDeviceId configured"
+          );
+        }
 
         cloudClient.on("devices:request", async (data) => {
           const devices = await agent.getDevices(data.filter);

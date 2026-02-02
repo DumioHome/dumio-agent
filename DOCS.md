@@ -53,7 +53,9 @@ El `dumio_device_id` es el identificador único del agente en el cloud de Dumio.
 - **Reutilizar configuraciones**: Si el ID ya existe, se reutiliza la configuración existente
 - **Nuevos dispositivos**: Si el ID no existe, se crea un nuevo registro en el cloud
 
-Si no configuras un `dumio_device_id`, el sistema generará uno automáticamente. Sin embargo, se recomienda configurar uno fijo para mantener la consistencia del dispositivo entre reinicios.
+**IMPORTANTE**: El health reporting hacia el cloud solo se activa si configuras un `dumio_device_id`. Si no lo configuras, el agente funcionará normalmente pero no enviará datos de salud al cloud ni registrará el dispositivo en la tabla `DeviceHealths`.
+
+Esto permite que el cloud controle qué dispositivos existen - si el ID configurado ya existe en el cloud, se reutiliza; si no existe, se crea uno nuevo.
 
 ### Ejemplo de configuración
 
