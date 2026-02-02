@@ -426,8 +426,12 @@ export class Agent {
       const result = await syncUseCase.execute({ homeId });
 
       // If sync was successful, initialize the capability sync manager
-      if (result.success && result.devices) {
-        this.initializeCapabilitySyncManager(homeId, result.devices);
+      if (result.success && result.haDevices && result.syncedDevices_info) {
+        this.initializeCapabilitySyncManager(
+          homeId,
+          result.syncedDevices_info,
+          result.haDevices
+        );
       }
 
       return {
@@ -453,7 +457,8 @@ export class Agent {
    */
   private initializeCapabilitySyncManager(
     homeId: string,
-    devices: import("../domain/entities/CloudDevice.js").CloudDevice[]
+    syncedDevices: import("../domain/entities/CloudDevice.js").SyncedDeviceInfo[],
+    haDevices: import("../domain/entities/CloudDevice.js").CloudDevice[]
   ): void {
     if (!this.config.cloudClient) {
       return;
@@ -475,8 +480,12 @@ export class Agent {
       }
     );
 
-    // Initialize with synced devices
-    this.capabilitySyncManager.initializeFromSync(homeId, devices);
+    // Initialize with synced devices (includes Dumio UUIDs) and HA devices (for controller)
+    this.capabilitySyncManager.initializeFromSync(
+      homeId,
+      syncedDevices,
+      haDevices
+    );
 
     const stats = this.capabilitySyncManager.getStats();
     this.logger.info("CapabilitySyncManager initialized after sync", {
@@ -562,6 +571,7 @@ export class Agent {
       eventsReceived: number;
       updatesSkipped: number;
       updatesSent: number;
+      updatesFailed: number;
     } | null;
     controllerMappings: number;
   } | null {

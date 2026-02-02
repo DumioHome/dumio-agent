@@ -1,7 +1,11 @@
-import type { IHomeAssistantClient } from '../../domain/ports/IHomeAssistantClient.js';
-import type { ICloudClient } from '../../domain/ports/ICloudClient.js';
-import type { ILogger } from '../../domain/ports/ILogger.js';
-import type { Device, DeviceType, DeviceAttributes } from '../../domain/entities/Device.js';
+import type { IHomeAssistantClient } from "../../domain/ports/IHomeAssistantClient.js";
+import type { ICloudClient } from "../../domain/ports/ICloudClient.js";
+import type { ILogger } from "../../domain/ports/ILogger.js";
+import type {
+  Device,
+  DeviceType,
+  DeviceAttributes,
+} from "../../domain/entities/Device.js";
 import type {
   CloudDevice,
   CloudCapability,
@@ -10,8 +14,9 @@ import type {
   CloudCapabilityMeta,
   CloudCapabilityValue,
   DevicesSyncCallbackResponse,
-} from '../../domain/entities/CloudDevice.js';
-import { GetDevices } from './GetDevices.js';
+  SyncedDeviceInfo,
+} from "../../domain/entities/CloudDevice.js";
+import { GetDevices } from "./GetDevices.js";
 
 export interface SyncDevicesToCloudInput {
   homeId: string;
@@ -20,8 +25,10 @@ export interface SyncDevicesToCloudInput {
 export interface SyncDevicesToCloudOutput {
   success: boolean;
   syncedDevices: number;
-  /** The cloud devices that were synced (for initializing state watcher) */
-  devices?: CloudDevice[];
+  /** The HA devices that were sent (for controller mappings) */
+  haDevices?: CloudDevice[];
+  /** The synced devices from cloud response with Dumio UUIDs (for state watcher) */
+  syncedDevices_info?: SyncedDeviceInfo[];
   response?: DevicesSyncCallbackResponse;
   error?: string;
 }
@@ -41,8 +48,12 @@ export class SyncDevicesToCloud {
     this.getDevicesUseCase = new GetDevices(haClient, logger);
   }
 
-  async execute(input: SyncDevicesToCloudInput): Promise<SyncDevicesToCloudOutput> {
-    this.logger.info('Executing SyncDevicesToCloud use case', { homeId: input.homeId });
+  async execute(
+    input: SyncDevicesToCloudInput
+  ): Promise<SyncDevicesToCloudOutput> {
+    this.logger.info("Executing SyncDevicesToCloud use case", {
+      homeId: input.homeId,
+    });
 
     try {
       // Get all devices with full details from HA
@@ -51,26 +62,26 @@ export class SyncDevicesToCloud {
       });
 
       const haDevices = devicesResult.devices as Device[];
-      
-      this.logger.debug('Fetched entities from Home Assistant', {
+
+      this.logger.debug("Fetched entities from Home Assistant", {
         entityCount: haDevices.length,
       });
 
       // Group entities by physical device ID and transform to cloud format
       const cloudDevices = this.groupAndTransformDevices(haDevices);
 
-      this.logger.debug('Transformed to physical devices', {
+      this.logger.debug("Transformed to physical devices", {
         physicalDeviceCount: cloudDevices.length,
         totalEntities: haDevices.length,
       });
 
       // Emit sync event to cloud with callback
-      this.logger.debug('Sending devices:sync to cloud', {
+      this.logger.debug("Sending devices:sync to cloud", {
         homeId: input.homeId,
         deviceCount: cloudDevices.length,
-        devices: cloudDevices.map(d => ({ 
-          deviceId: d.deviceId, 
-          name: d.name, 
+        devices: cloudDevices.map((d) => ({
+          deviceId: d.deviceId,
+          name: d.name,
           type: d.deviceType,
           entityCount: d.entityIds.length,
           capabilities: d.capabilities.length,
@@ -78,7 +89,7 @@ export class SyncDevicesToCloud {
       });
 
       const response = await this.cloudClient.emitWithCallback(
-        'devices:sync',
+        "devices:sync",
         {
           homeId: input.homeId,
           devices: cloudDevices,
@@ -86,7 +97,7 @@ export class SyncDevicesToCloud {
         30000 // 30 second timeout
       );
 
-      this.logger.info('Devices synced to cloud', {
+      this.logger.info("Devices synced to cloud", {
         homeId: input.homeId,
         syncedDevices: cloudDevices.length,
         success: response.success,
@@ -96,13 +107,17 @@ export class SyncDevicesToCloud {
       return {
         success: response.success,
         syncedDevices: cloudDevices.length,
-        devices: cloudDevices,
+        haDevices: cloudDevices,
+        syncedDevices_info: response.data?.devices,
         response,
         error: response.error,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error('Error syncing devices to cloud', { error: errorMessage });
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      this.logger.error("Error syncing devices to cloud", {
+        error: errorMessage,
+      });
 
       return {
         success: false,
@@ -163,38 +178,38 @@ export class SyncDevicesToCloud {
     // Add switch capability for controllable devices
     if (deviceCaps.canTurnOn || deviceCaps.canTurnOff) {
       capabilities.push({
-        capabilityType: 'switch',
-        valueType: 'boolean',
+        capabilityType: "switch",
+        valueType: "boolean",
         currentValue: { on: status.isOn ?? false },
-        meta: { description: 'Encender/Apagar' },
+        meta: { description: "Encender/Apagar" },
       });
     }
 
     // Add brightness capability
     if (deviceCaps.canDim && attributes.brightness !== undefined) {
       capabilities.push({
-        capabilityType: 'brightness',
-        valueType: 'number',
+        capabilityType: "brightness",
+        valueType: "number",
         currentValue: { value: attributes.brightness },
-        meta: { min: 0, max: 100, unit: '%' },
+        meta: { min: 0, max: 100, unit: "%" },
       });
     }
 
     // Add color temperature capability
     if (attributes.colorTemp !== undefined) {
       capabilities.push({
-        capabilityType: 'color_temp',
-        valueType: 'number',
+        capabilityType: "color_temp",
+        valueType: "number",
         currentValue: { value: attributes.colorTemp },
-        meta: { min: 2700, max: 6500, unit: 'K' },
+        meta: { min: 2700, max: 6500, unit: "K" },
       });
     }
 
     // Add color capability
     if (deviceCaps.canChangeColor && attributes.color) {
       capabilities.push({
-        capabilityType: 'color',
-        valueType: 'object',
+        capabilityType: "color",
+        valueType: "object",
         currentValue: {
           r: attributes.color.r,
           g: attributes.color.g,
@@ -205,81 +220,84 @@ export class SyncDevicesToCloud {
     }
 
     // Add temperature capability for sensors/climate
-    if (attributes.temperature !== undefined || attributes.currentTemperature !== undefined) {
+    if (
+      attributes.temperature !== undefined ||
+      attributes.currentTemperature !== undefined
+    ) {
       const tempValue = attributes.currentTemperature ?? attributes.temperature;
       capabilities.push({
-        capabilityType: 'temperature',
-        valueType: 'number',
+        capabilityType: "temperature",
+        valueType: "number",
         currentValue: { value: tempValue },
-        meta: { unit: attributes.unit ?? '°C' },
+        meta: { unit: attributes.unit ?? "°C" },
       });
     }
 
     // Add humidity capability
     if (attributes.humidity !== undefined) {
       capabilities.push({
-        capabilityType: 'humidity',
-        valueType: 'number',
+        capabilityType: "humidity",
+        valueType: "number",
         currentValue: { value: attributes.humidity },
-        meta: { unit: '%' },
+        meta: { unit: "%" },
       });
     }
 
     // Add battery capability
     if (attributes.battery !== undefined) {
       capabilities.push({
-        capabilityType: 'battery',
-        valueType: 'number',
+        capabilityType: "battery",
+        valueType: "number",
         currentValue: { value: attributes.battery },
-        meta: { min: 0, max: 100, unit: '%' },
+        meta: { min: 0, max: 100, unit: "%" },
       });
     }
 
     // Add power capability
     if (attributes.power !== undefined) {
       capabilities.push({
-        capabilityType: 'power',
-        valueType: 'number',
+        capabilityType: "power",
+        valueType: "number",
         currentValue: { value: attributes.power },
-        meta: { unit: 'W' },
+        meta: { unit: "W" },
       });
     }
 
     // Add energy capability
     if (attributes.energy !== undefined) {
       capabilities.push({
-        capabilityType: 'energy',
-        valueType: 'number',
+        capabilityType: "energy",
+        valueType: "number",
         currentValue: { value: attributes.energy },
-        meta: { unit: 'kWh' },
+        meta: { unit: "kWh" },
       });
     }
 
     // Add position capability for covers
     if (deviceCaps.canSetPosition && attributes.position !== undefined) {
       capabilities.push({
-        capabilityType: 'position',
-        valueType: 'number',
+        capabilityType: "position",
+        valueType: "number",
         currentValue: { value: attributes.position },
-        meta: { min: 0, max: 100, unit: '%' },
+        meta: { min: 0, max: 100, unit: "%" },
       });
     }
 
     // Add volume capability for media players
     if (deviceCaps.canSetVolume && attributes.volume !== undefined) {
       capabilities.push({
-        capabilityType: 'volume',
-        valueType: 'number',
+        capabilityType: "volume",
+        valueType: "number",
         currentValue: { value: attributes.volume },
-        meta: { min: 0, max: 100, unit: '%' },
+        meta: { min: 0, max: 100, unit: "%" },
       });
     }
 
     // Add mode capability for climate devices
     if (attributes.mode !== undefined) {
       capabilities.push({
-        capabilityType: 'mode',
-        valueType: 'string',
+        capabilityType: "mode",
+        valueType: "string",
         currentValue: { value: attributes.mode },
         meta: null,
       });
@@ -288,20 +306,20 @@ export class SyncDevicesToCloud {
     // Add preset capability
     if (attributes.preset !== undefined) {
       capabilities.push({
-        capabilityType: 'preset',
-        valueType: 'string',
+        capabilityType: "preset",
+        valueType: "string",
         currentValue: { value: attributes.preset },
         meta: null,
       });
     }
 
     // Add binary sensor specific capabilities
-    if (type === 'binary_sensor') {
+    if (type === "binary_sensor") {
       const capabilityType = this.mapBinarySensorCapability(device);
       if (capabilityType) {
         capabilities.push({
           capabilityType,
-          valueType: 'boolean',
+          valueType: "boolean",
           currentValue: { on: status.isOn ?? false },
           meta: null,
         });
@@ -309,12 +327,12 @@ export class SyncDevicesToCloud {
     }
 
     // Add lock capability
-    if (type === 'lock') {
+    if (type === "lock") {
       capabilities.push({
-        capabilityType: 'lock',
-        valueType: 'boolean',
-        currentValue: { on: status.state === 'locked' },
-        meta: { description: 'Bloqueado/Desbloqueado' },
+        capabilityType: "lock",
+        valueType: "boolean",
+        currentValue: { on: status.state === "locked" },
+        meta: { description: "Bloqueado/Desbloqueado" },
       });
     }
 
@@ -329,14 +347,16 @@ export class SyncDevicesToCloud {
   /**
    * Map binary sensor device class to capability type
    */
-  private mapBinarySensorCapability(device: Device): CloudCapabilityType | null {
+  private mapBinarySensorCapability(
+    device: Device
+  ): CloudCapabilityType | null {
     switch (device.type) {
-      case 'motion':
-        return 'motion';
-      case 'door':
-        return 'door';
-      case 'window':
-        return 'window';
+      case "motion":
+        return "motion";
+      case "door":
+        return "door";
+      case "window":
+        return "window";
       default:
         return null;
     }
@@ -349,19 +369,21 @@ export class SyncDevicesToCloud {
     const { status, type } = device;
 
     // For sensors, return the state value
-    if (['sensor', 'temperature', 'humidity', 'power', 'battery'].includes(type)) {
+    if (
+      ["sensor", "temperature", "humidity", "power", "battery"].includes(type)
+    ) {
       return {
         capabilityType: this.mapSensorType(type),
-        valueType: 'number',
+        valueType: "number",
         currentValue: { value: parseFloat(status.state) || 0 },
-        meta: { unit: status.attributes.unit ?? '' },
+        meta: { unit: status.attributes.unit ?? "" },
       };
     }
 
     // Default switch capability
     return {
-      capabilityType: 'switch',
-      valueType: 'boolean',
+      capabilityType: "switch",
+      valueType: "boolean",
       currentValue: { on: status.isOn ?? false },
       meta: null,
     };
@@ -372,12 +394,12 @@ export class SyncDevicesToCloud {
    */
   private mapSensorType(type: DeviceType): CloudCapabilityType {
     const mapping: Partial<Record<DeviceType, CloudCapabilityType>> = {
-      temperature: 'temperature',
-      humidity: 'humidity',
-      power: 'power',
-      battery: 'battery',
-      sensor: 'sensor',
+      temperature: "temperature",
+      humidity: "humidity",
+      power: "power",
+      battery: "battery",
+      sensor: "sensor",
     };
-    return mapping[type] ?? 'sensor';
+    return mapping[type] ?? "sensor";
   }
 }
