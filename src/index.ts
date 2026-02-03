@@ -134,6 +134,67 @@ async function main(): Promise<void> {
     };
   });
 
+  /**
+   * Ensure device sync is initialized (restore from cloud or fetch + sync).
+   * Called when HA or cloud (re)connects so device control works without manual sync.
+   */
+  const ensureDeviceSyncInitialized = async (): Promise<void> => {
+    if (!cloudClient || !dumioDeviceId) return;
+
+    const syncManager = agent.getCapabilitySyncManager();
+    if (syncManager && !syncManager.active) {
+      logger.info("Attempting to restore sync state from cloud");
+      const restored = await agent.restoreSyncFromCloud();
+      if (restored) {
+        logger.info("Sync state restored successfully");
+      } else {
+        logger.info(
+          "No devices found in cloud, waiting for manual sync via /api/devices/sync"
+        );
+      }
+      return;
+    }
+
+    if (!syncManager) {
+      logger.info(
+        "No active sync manager, attempting to fetch devices from cloud"
+      );
+      try {
+        const response = await cloudClient.emitWithCallback(
+          "devices:fetch",
+          { dumioDeviceId },
+          30000
+        );
+        if (
+          response.success &&
+          response.devices &&
+          response.devices.length > 0 &&
+          response.homeId
+        ) {
+          logger.info("Devices found in cloud, triggering sync", {
+            homeId: response.homeId,
+            deviceCount: response.devices.length,
+          });
+          const syncResult = await agent.syncDevicesToCloud(response.homeId);
+          if (syncResult.success) {
+            logger.info("Auto-sync completed", {
+              syncedDevices: syncResult.syncedDevices,
+              watching: syncResult.watching,
+            });
+          }
+        } else {
+          logger.info(
+            "No devices found in cloud for this agent, waiting for manual sync"
+          );
+        }
+      } catch (error) {
+        logger.error("Failed to fetch devices from cloud", {
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+  };
+
   // Event handlers - notify httpServer of changes to invalidate cache
   const handlers = {
     onStateChange: (
@@ -174,6 +235,19 @@ async function main(): Promise<void> {
       logger.info("Connection state changed", { state });
       // Notify httpServer to invalidate cache on connection change
       httpServer.onConnectionChange(state);
+      // When HA (re)connects, ensure device sync is initialized so control works (e.g. after HA restart)
+      if (
+        state === "connected" &&
+        cloudClient &&
+        dumioDeviceId &&
+        cloudClient.connectionState === "connected"
+      ) {
+        ensureDeviceSyncInitialized().catch((err) =>
+          logger.error("Ensure sync after HA connected failed", {
+            error: err instanceof Error ? err.message : String(err),
+          })
+        );
+      }
     },
   };
 
@@ -327,88 +401,15 @@ async function main(): Promise<void> {
           });
         });
 
-        // Handle cloud reconnection - attempt to restore sync state
+        // On cloud connect/reconnect: restore or initialize sync so device control works
         cloudClient.onConnectionStateChange(async (state) => {
           if (state === "connected") {
-            logger.info(
-              "Cloud reconnected, checking for sync state restoration"
+            logger.info("Cloud connected, ensuring device sync is initialized");
+            ensureDeviceSyncInitialized().catch((err) =>
+              logger.error("Ensure sync after cloud connect failed", {
+                error: err instanceof Error ? err.message : String(err),
+              })
             );
-
-            // Check if there's an existing sync manager that needs restoration
-            const syncManager = agent.getCapabilitySyncManager();
-            if (syncManager && !syncManager.active) {
-              logger.info("Attempting to restore sync state from cloud");
-
-              try {
-                const restored = await agent.restoreSyncFromCloud();
-                if (restored) {
-                  logger.info(
-                    "Sync state restored successfully after reconnection"
-                  );
-                } else {
-                  logger.info(
-                    "No devices found in cloud, waiting for manual sync via /api/devices/sync"
-                  );
-                }
-              } catch (error) {
-                logger.error(
-                  "Failed to restore sync state after reconnection",
-                  {
-                    error:
-                      error instanceof Error ? error.message : "Unknown error",
-                  }
-                );
-              }
-            } else if (!syncManager && dumioDeviceId) {
-              // No sync manager yet, but we have a dumioDeviceId
-              // Try to fetch devices from cloud to see if we should auto-initialize
-              logger.info(
-                "No active sync manager, attempting to fetch devices from cloud"
-              );
-
-              try {
-                const response = await cloudClient.emitWithCallback(
-                  "devices:fetch",
-                  { dumioDeviceId },
-                  30000
-                );
-
-                if (
-                  response.success &&
-                  response.devices &&
-                  response.devices.length > 0 &&
-                  response.homeId
-                ) {
-                  logger.info("Devices found in cloud, triggering sync", {
-                    homeId: response.homeId,
-                    deviceCount: response.devices.length,
-                  });
-
-                  // Trigger a full sync with the homeId from cloud
-                  const syncResult = await agent.syncDevicesToCloud(
-                    response.homeId
-                  );
-                  if (syncResult.success) {
-                    logger.info("Auto-sync completed after reconnection", {
-                      syncedDevices: syncResult.syncedDevices,
-                      watching: syncResult.watching,
-                    });
-                  }
-                } else {
-                  logger.info(
-                    "No devices found in cloud for this agent, waiting for manual sync"
-                  );
-                }
-              } catch (error) {
-                logger.error(
-                  "Failed to fetch devices from cloud on reconnection",
-                  {
-                    error:
-                      error instanceof Error ? error.message : "Unknown error",
-                  }
-                );
-              }
-            }
           }
         });
       } catch (error) {
