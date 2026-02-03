@@ -1,4 +1,4 @@
-import WebSocket from 'ws';
+import WebSocket from "ws";
 import type {
   IHomeAssistantClient,
   ConnectionState,
@@ -6,16 +6,16 @@ import type {
   EventHandler,
   StateChangeHandler,
   ConnectionStateHandler,
-} from '../../domain/ports/IHomeAssistantClient.js';
+} from "../../domain/ports/IHomeAssistantClient.js";
 import type {
   HAIncomingMessage,
   HAOutgoingCommand,
   HAResultMessage,
   HAEventMessage,
   HAAuthRequiredMessage,
-} from '../../domain/entities/HomeAssistantMessage.js';
-import type { EntityState } from '../../domain/entities/Entity.js';
-import type { ILogger } from '../../domain/ports/ILogger.js';
+} from "../../domain/entities/HomeAssistantMessage.js";
+import type { EntityState } from "../../domain/entities/Entity.js";
+import type { ILogger } from "../../domain/ports/ILogger.js";
 
 interface PendingCommand {
   resolve: (value: HAResultMessage) => void;
@@ -37,7 +37,7 @@ export interface HomeAssistantClientConfig {
  */
 export class HomeAssistantClient implements IHomeAssistantClient {
   private ws: WebSocket | null = null;
-  private _connectionState: ConnectionState = 'disconnected';
+  private _connectionState: ConnectionState = "disconnected";
   private _haVersion: string | null = null;
   private messageId = 1;
   private pendingCommands = new Map<number, PendingCommand>();
@@ -77,48 +77,59 @@ export class HomeAssistantClient implements IHomeAssistantClient {
     const previousState = this._connectionState;
     this._connectionState = state;
     if (previousState !== state) {
-      this.logger.debug('Connection state changed', { from: previousState, to: state });
+      this.logger.debug("Connection state changed", {
+        from: previousState,
+        to: state,
+      });
       this.connectionStateHandlers.forEach((handler) => handler(state));
     }
   }
 
   async connect(): Promise<void> {
-    if (this._connectionState === 'connected' || this._connectionState === 'connecting') {
-      this.logger.warn('Already connected or connecting');
+    if (
+      this._connectionState === "connected" ||
+      this._connectionState === "connecting"
+    ) {
+      this.logger.warn("Already connected or connecting");
       return;
     }
 
     return new Promise((resolve, reject) => {
-      this.setConnectionState('connecting');
-      this.logger.info('Connecting to Home Assistant', { url: this.config.url });
+      this.setConnectionState("connecting");
+      this.logger.info("Connecting to Home Assistant", {
+        url: this.config.url,
+      });
 
       try {
         this.ws = new WebSocket(this.config.url);
 
-        this.ws.on('open', () => {
-          this.logger.debug('WebSocket connection opened');
+        this.ws.on("open", () => {
+          this.logger.debug("WebSocket connection opened");
           this.reconnectAttempts = 0;
         });
 
-        this.ws.on('message', (data) => {
+        this.ws.on("message", (data) => {
           this.handleMessage(data.toString(), resolve, reject);
         });
 
-        this.ws.on('close', (code, reason) => {
-          this.logger.info('WebSocket closed', { code, reason: reason.toString() });
+        this.ws.on("close", (code, reason) => {
+          this.logger.info("WebSocket closed", {
+            code,
+            reason: reason.toString(),
+          });
           this.handleDisconnect();
         });
 
-        this.ws.on('error', (error) => {
-          this.logger.error('WebSocket error', error);
-          if (this._connectionState === 'connecting') {
+        this.ws.on("error", (error) => {
+          this.logger.error("WebSocket error", error);
+          if (this._connectionState === "connecting") {
             reject(error);
           }
-          this.setConnectionState('error');
+          this.setConnectionState("error");
         });
       } catch (error) {
-        this.logger.error('Failed to create WebSocket', error);
-        this.setConnectionState('error');
+        this.logger.error("Failed to create WebSocket", error);
+        this.setConnectionState("error");
         reject(error);
       }
     });
@@ -131,55 +142,59 @@ export class HomeAssistantClient implements IHomeAssistantClient {
   ): void {
     try {
       const message = JSON.parse(data) as HAIncomingMessage;
-      this.logger.trace('Received message', { type: message.type });
+      this.logger.trace("Received message", { type: message.type });
 
       // Notify all message handlers
       this.messageHandlers.forEach((handler) => handler(message));
 
       switch (message.type) {
-        case 'auth_required':
+        case "auth_required":
           this.handleAuthRequired(message as HAAuthRequiredMessage);
           break;
 
-        case 'auth_ok':
+        case "auth_ok":
           this._haVersion = message.ha_version ?? null;
-          this.setConnectionState('connected');
-          this.logger.info('Authentication successful', { haVersion: this._haVersion });
+          this.setConnectionState("connected");
+          this.logger.info("Authentication successful", {
+            haVersion: this._haVersion,
+          });
           this.startPingInterval();
           connectResolve?.();
           break;
 
-        case 'auth_invalid':
-          this.setConnectionState('error');
+        case "auth_invalid":
+          this.setConnectionState("error");
           const error = new Error(`Authentication failed: ${message.message}`);
-          this.logger.error('Authentication failed', error);
+          this.logger.error("Authentication failed", error);
           connectReject?.(error);
           break;
 
-        case 'result':
+        case "result":
           this.handleResult(message as HAResultMessage);
           break;
 
-        case 'event':
+        case "event":
           this.handleEvent(message as HAEventMessage);
           break;
 
-        case 'pong':
-          this.logger.trace('Pong received', { id: message.id });
+        case "pong":
+          this.logger.trace("Pong received", { id: message.id });
           break;
       }
     } catch (error) {
-      this.logger.error('Failed to parse message', error, { data });
+      this.logger.error("Failed to parse message", error, { data });
     }
   }
 
   private handleAuthRequired(message: HAAuthRequiredMessage): void {
     this._haVersion = message.ha_version;
-    this.setConnectionState('authenticating');
-    this.logger.debug('Authentication required', { haVersion: message.ha_version });
+    this.setConnectionState("authenticating");
+    this.logger.debug("Authentication required", {
+      haVersion: message.ha_version,
+    });
 
     this.sendRaw({
-      type: 'auth',
+      type: "auth",
       access_token: this.config.accessToken,
     });
   }
@@ -193,10 +208,17 @@ export class HomeAssistantClient implements IHomeAssistantClient {
       if (message.success) {
         pending.resolve(message);
       } else {
-        const error = new Error(
-          message.error?.message ?? 'Unknown error'
-        );
-        pending.reject(error);
+        const errorMessage = message.error?.message ?? "Unknown error";
+        // After HA restart, subscriptions are cleared server-side; "Subscription not found"
+        // on unsubscribe is expected. Resolve instead of reject to avoid crashing the process.
+        if (errorMessage === "Subscription not found") {
+          this.logger.warn("Subscription not found (likely HA restarted)", {
+            id: message.id,
+          });
+          pending.resolve(message);
+          return;
+        }
+        pending.reject(new Error(errorMessage));
       }
     }
   }
@@ -206,7 +228,7 @@ export class HomeAssistantClient implements IHomeAssistantClient {
     this.eventHandlers.forEach((handler) => handler(message));
 
     // Handle state_changed events
-    if (message.event.event_type === 'state_changed') {
+    if (message.event.event_type === "state_changed") {
       const data = message.event.data as {
         entity_id: string;
         old_state: EntityState | null;
@@ -224,13 +246,13 @@ export class HomeAssistantClient implements IHomeAssistantClient {
 
   private handleDisconnect(): void {
     this.stopPingInterval();
-    this.setConnectionState('disconnected');
+    this.setConnectionState("disconnected");
     this.ws = null;
 
     // Reject all pending commands
     this.pendingCommands.forEach((pending) => {
       clearTimeout(pending.timeout);
-      pending.reject(new Error('Connection closed'));
+      pending.reject(new Error("Connection closed"));
     });
     this.pendingCommands.clear();
 
@@ -239,25 +261,23 @@ export class HomeAssistantClient implements IHomeAssistantClient {
   }
 
   private scheduleReconnect(): void {
-    if (
-      this.reconnectAttempts >= (this.config.maxReconnectAttempts ?? 10)
-    ) {
-      this.logger.error('Max reconnection attempts reached');
-      this.setConnectionState('error');
+    if (this.reconnectAttempts >= (this.config.maxReconnectAttempts ?? 10)) {
+      this.logger.error("Max reconnection attempts reached");
+      this.setConnectionState("error");
       return;
     }
 
     this.reconnectAttempts++;
     const delay = this.config.reconnectInterval ?? 5000;
 
-    this.logger.info('Scheduling reconnection', {
+    this.logger.info("Scheduling reconnection", {
       attempt: this.reconnectAttempts,
       delay,
     });
 
     this.reconnectTimer = setTimeout(() => {
       this.connect().catch((error) => {
-        this.logger.error('Reconnection failed', error);
+        this.logger.error("Reconnection failed", error);
       });
     }, delay);
   }
@@ -266,7 +286,7 @@ export class HomeAssistantClient implements IHomeAssistantClient {
     this.stopPingInterval();
     this.pingTimer = setInterval(() => {
       this.ping().catch((error) => {
-        this.logger.error('Ping failed', error);
+        this.logger.error("Ping failed", error);
       });
     }, this.config.pingInterval ?? 30000);
   }
@@ -280,13 +300,13 @@ export class HomeAssistantClient implements IHomeAssistantClient {
 
   private sendRaw(data: unknown): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket is not connected');
+      throw new Error("WebSocket is not connected");
     }
     this.ws.send(JSON.stringify(data));
   }
 
   async disconnect(): Promise<void> {
-    this.logger.info('Disconnecting from Home Assistant');
+    this.logger.info("Disconnecting from Home Assistant");
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -301,14 +321,14 @@ export class HomeAssistantClient implements IHomeAssistantClient {
       this.ws = null;
     }
 
-    this.setConnectionState('disconnected');
+    this.setConnectionState("disconnected");
   }
 
   async sendCommand<T = unknown>(
     command: HAOutgoingCommand
   ): Promise<HAResultMessage & { result: T }> {
-    if (this._connectionState !== 'connected') {
-      throw new Error('Not connected to Home Assistant');
+    if (this._connectionState !== "connected") {
+      throw new Error("Not connected to Home Assistant");
     }
 
     const id = this.messageId++;
@@ -328,7 +348,7 @@ export class HomeAssistantClient implements IHomeAssistantClient {
 
       try {
         this.sendRaw(commandWithId);
-        this.logger.debug('Command sent', { id, type: command.type });
+        this.logger.debug("Command sent", { id, type: command.type });
       } catch (error) {
         clearTimeout(timeout);
         this.pendingCommands.delete(id);
@@ -339,25 +359,30 @@ export class HomeAssistantClient implements IHomeAssistantClient {
 
   async subscribeEvents(eventType?: string): Promise<number> {
     const command = {
-      type: 'subscribe_events' as const,
+      type: "subscribe_events" as const,
       ...(eventType && { event_type: eventType }),
     };
 
     const result = await this.sendCommand(command);
-    this.logger.info('Subscribed to events', { eventType, subscriptionId: result.id });
+    this.logger.info("Subscribed to events", {
+      eventType,
+      subscriptionId: result.id,
+    });
     return result.id;
   }
 
   async unsubscribeEvents(subscriptionId: number): Promise<void> {
     await this.sendCommand({
-      type: 'unsubscribe_events',
+      type: "unsubscribe_events",
       subscription: subscriptionId,
     } as HAOutgoingCommand);
-    this.logger.info('Unsubscribed from events', { subscriptionId });
+    this.logger.info("Unsubscribed from events", { subscriptionId });
   }
 
   async getStates(): Promise<EntityState[]> {
-    const result = await this.sendCommand<EntityState[]>({ type: 'get_states' });
+    const result = await this.sendCommand<EntityState[]>({
+      type: "get_states",
+    });
 
     // Cache states
     if (Array.isArray(result.result)) {
@@ -370,12 +395,16 @@ export class HomeAssistantClient implements IHomeAssistantClient {
   }
 
   async getConfig(): Promise<Record<string, unknown>> {
-    const result = await this.sendCommand<Record<string, unknown>>({ type: 'get_config' });
+    const result = await this.sendCommand<Record<string, unknown>>({
+      type: "get_config",
+    });
     return result.result;
   }
 
   async getServices(): Promise<Record<string, unknown>> {
-    const result = await this.sendCommand<Record<string, unknown>>({ type: 'get_services' });
+    const result = await this.sendCommand<Record<string, unknown>>({
+      type: "get_services",
+    });
     return result.result;
   }
 
@@ -390,21 +419,21 @@ export class HomeAssistantClient implements IHomeAssistantClient {
     }
   ): Promise<HAResultMessage> {
     const command = {
-      type: 'call_service' as const,
+      type: "call_service" as const,
       domain,
       service,
       ...(data && { service_data: data }),
       ...(target && { target }),
     };
 
-    this.logger.info('Calling service', { domain, service, target });
+    this.logger.info("Calling service", { domain, service, target });
     return this.sendCommand(command);
   }
 
   async ping(): Promise<void> {
     const id = this.messageId++;
-    this.sendRaw({ id, type: 'ping' });
-    this.logger.trace('Ping sent', { id });
+    this.sendRaw({ id, type: "ping" });
+    this.logger.trace("Ping sent", { id });
   }
 
   // Event handler registration
