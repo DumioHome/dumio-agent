@@ -270,56 +270,36 @@ export class DeviceStateWatcher {
   /**
    * Send capability update to cloud using the Dumio UUID
    * currentValue is wrapped: { on: true }, { value: 75 }, { r, g, b }
+   * Uses fire-and-forget emit for better performance
    */
-  private async sendCapabilityUpdate(
+  private sendCapabilityUpdate(
     mapping: EntityDeviceMapping,
     currentValue: CloudCapabilityValue,
     entityId: string
-  ): Promise<void> {
-    try {
-      const response = await this.cloudClient.emitWithCallback(
-        "capability:update",
-        {
-          deviceId: mapping.dumioDeviceId, // UUID de Dumio, NOT HA deviceId
-          capabilityType: mapping.capabilityType,
-          currentValue, // Object: { on: true }, { value: 75 }, etc.
-        },
-        10000 // 10 second timeout
-      );
+  ): void {
+    // Send update to cloud (fire and forget for performance)
+    this.cloudClient.emit("capability:update", {
+      deviceId: mapping.dumioDeviceId, // UUID de Dumio, NOT HA deviceId
+      capabilityType: mapping.capabilityType,
+      currentValue, // Object: { on: true }, { value: 75 }, etc.
+    });
 
-      if (response.success) {
-        // Cache the sent value
-        this.lastSentValues.set(entityId, {
-          value: currentValue,
-          timestamp: Date.now(),
-        });
+    // Cache the sent value
+    this.lastSentValues.set(entityId, {
+      value: currentValue,
+      timestamp: Date.now(),
+    });
 
-        this.stats.updatesSent++;
+    this.stats.updatesSent++;
 
-        this.logger.debug("Capability update sent to cloud", {
-          dumioDeviceId: mapping.dumioDeviceId,
-          haDeviceId: mapping.haDeviceId,
-          entityId,
-          capabilityType: mapping.capabilityType,
-          currentValue,
-          stats: this.stats,
-        });
-      } else {
-        this.stats.updatesFailed++;
-        this.logger.warn("Capability update failed", {
-          dumioDeviceId: mapping.dumioDeviceId,
-          entityId,
-          error: response.error,
-        });
-      }
-    } catch (error) {
-      this.stats.updatesFailed++;
-      this.logger.error("Error sending capability update", {
-        dumioDeviceId: mapping.dumioDeviceId,
-        entityId,
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
+    this.logger.debug("Capability update sent to cloud", {
+      dumioDeviceId: mapping.dumioDeviceId,
+      haDeviceId: mapping.haDeviceId,
+      entityId,
+      capabilityType: mapping.capabilityType,
+      currentValue,
+      stats: this.stats,
+    });
   }
 
   /**
