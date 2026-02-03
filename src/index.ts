@@ -135,11 +135,18 @@ async function main(): Promise<void> {
   });
 
   /**
-   * Ensure device sync is initialized (restore from cloud or fetch + sync).
-   * Called when HA or cloud (re)connects so device control works without manual sync.
+   * Same as POST /api/devices/sync: run full sync (HA → cloud) so agent stays in sync after
+   * addon/HA startup (e.g. after power outage). Only runs when both HA and cloud are connected.
    */
   const ensureDeviceSyncInitialized = async (): Promise<void> => {
     if (!cloudClient || !dumioDeviceId) return;
+
+    if (haClient.connectionState !== "connected") {
+      logger.info(
+        "Skipping auto-sync: Home Assistant not connected yet (will sync when HA is ready)"
+      );
+      return;
+    }
 
     const syncManager = agent.getCapabilitySyncManager();
     if (syncManager && !syncManager.active) {
@@ -148,50 +155,58 @@ async function main(): Promise<void> {
       if (restored) {
         logger.info("Sync state restored successfully");
       } else {
-        logger.info(
-          "No devices found in cloud, waiting for manual sync via /api/devices/sync"
-        );
+        await runFullSyncFromCloud();
       }
       return;
     }
 
     if (!syncManager) {
-      logger.info(
-        "No active sync manager, attempting to fetch devices from cloud"
+      await runFullSyncFromCloud();
+    }
+  };
+
+  /**
+   * Get homeId from cloud and run full devices sync (same as /api/devices/sync with that homeId).
+   */
+  const runFullSyncFromCloud = async (): Promise<void> => {
+    if (!cloudClient || !dumioDeviceId) return;
+
+    try {
+      const response = await cloudClient.emitWithCallback(
+        "devices:fetch",
+        { dumioDeviceId },
+        30000
       );
-      try {
-        const response = await cloudClient.emitWithCallback(
-          "devices:fetch",
-          { dumioDeviceId },
-          30000
+
+      if (!response.success || !response.homeId) {
+        logger.info(
+          "No homeId from cloud for this agent, skipping auto-sync (use POST /api/devices/sync with homeId if needed)"
         );
-        if (
-          response.success &&
-          response.devices &&
-          response.devices.length > 0 &&
-          response.homeId
-        ) {
-          logger.info("Devices found in cloud, triggering sync", {
-            homeId: response.homeId,
-            deviceCount: response.devices.length,
-          });
-          const syncResult = await agent.syncDevicesToCloud(response.homeId);
-          if (syncResult.success) {
-            logger.info("Auto-sync completed", {
-              syncedDevices: syncResult.syncedDevices,
-              watching: syncResult.watching,
-            });
-          }
-        } else {
-          logger.info(
-            "No devices found in cloud for this agent, waiting for manual sync"
-          );
-        }
-      } catch (error) {
-        logger.error("Failed to fetch devices from cloud", {
-          error: error instanceof Error ? error.message : "Unknown error",
+        return;
+      }
+
+      logger.info("Running auto-sync (same as /api/devices/sync)", {
+        homeId: response.homeId,
+        deviceCountInCloud: response.devices?.length ?? 0,
+      });
+
+      const syncResult = await agent.syncDevicesToCloud(response.homeId);
+
+      if (syncResult.success) {
+        logger.info("Auto-sync completed after startup", {
+          syncedDevices: syncResult.syncedDevices,
+          watching: syncResult.watching,
+        });
+      } else {
+        logger.warn("Auto-sync finished with errors", {
+          error: syncResult.error,
+          syncedDevices: syncResult.syncedDevices,
         });
       }
+    } catch (error) {
+      logger.error("Auto-sync failed (fetch homeId or sync)", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   };
 
