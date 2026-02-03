@@ -68,6 +68,8 @@ export interface CloudResponseMap {
   "command:result": { success: boolean; message: string; data?: unknown };
   /** Response to device control command */
   "device:control:response": DeviceControlResponse;
+  /** Real-time capability state update (fire-and-forget) */
+  "capability:update": CapabilityUpdatePayload;
 }
 
 /**
