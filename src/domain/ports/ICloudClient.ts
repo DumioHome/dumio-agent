@@ -59,21 +59,30 @@ export interface CloudEventMap {
 }
 
 /**
- * Device state update payload for cloud
+ * Device update payload for cloud (device:update event)
  */
-export interface DeviceStateUpdate {
+export interface DeviceUpdate {
+  /** REQUERIDO - UUID del dispositivo en Dumio */
   id: string;
-  entityId: string;
-  name: string;
-  type: string;
-  roomId: string | null;
-  roomName: string | null;
-  isOnline: boolean;
-  isOn: boolean | null;
-  state: string;
-  stateDisplay: string;
-  lastChanged: string;
-  lastUpdated: string;
+  /** Opcional - Identificador del dispositivo en Home Assistant */
+  deviceId?: string;
+  /** Opcional - Array de entity_ids relacionados */
+  entityIds?: string[];
+  /** Opcional - Nombre del dispositivo */
+  name?: string;
+  /** Opcional - Tipo de dispositivo */
+  deviceType?: string;
+  /** Opcional - Modelo del dispositivo */
+  model?: string;
+  /** Opcional - Fabricante */
+  manufacturer?: string;
+  /** Opcional - Array de capabilities a actualizar */
+  capabilities?: Array<{
+    capabilityType: string;
+    valueType: string;
+    currentValue?: unknown;
+    meta?: unknown;
+  }>;
 }
 
 /**
@@ -88,8 +97,8 @@ export interface CloudResponseMap {
   "device:control:response": DeviceControlResponse;
   /** Real-time capability state update (fire-and-forget) */
   "capability:update": CapabilityUpdatePayload;
-  /** Device state update when entity state changes */
-  "device:state:update": DeviceStateUpdate;
+  /** Device update when entity state changes */
+  "device:update": DeviceUpdate;
 }
 
 /**

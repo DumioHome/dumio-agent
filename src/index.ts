@@ -8,7 +8,8 @@ import { Agent } from "./presentation/Agent.js";
 import { HttpServer } from "./presentation/HttpServer.js";
 import type { EntityState, HAEventMessage } from "./domain/index.js";
 import type { ConnectionState } from "./domain/ports/IHomeAssistantClient.js";
-import type { AgentHealthData, DeviceStateUpdate } from "./domain/ports/ICloudClient.js";
+import type { AgentHealthData, DeviceUpdate } from "./domain/ports/ICloudClient.js";
+import { DeviceCapabilityMapper } from "./infrastructure/mappers/index.js";
 
 // Agent version
 const AGENT_VERSION = "1.0.0";
@@ -240,27 +241,31 @@ async function main(): Promise<void> {
             const device = devices.find((d) => d.entityId === entityId);
 
             if (device) {
-              // Map device to cloud update format with correct type and stateDisplay
-              const stateUpdate: DeviceStateUpdate = {
-                id: device.id,
-                entityId: device.entityId,
+              // Extract capabilities with correct capabilityType mapping
+              const capabilities = DeviceCapabilityMapper.extractCapabilities(device);
+
+              // Map device to cloud update format
+              const deviceUpdate: DeviceUpdate = {
+                id: device.id, // UUID del dispositivo en Dumio (requerido)
+                deviceId: device.id, // Identificador del dispositivo en Home Assistant
+                entityIds: [device.entityId], // Array de entity_ids relacionados
                 name: device.name,
-                type: device.type, // This will be correctly mapped (sensor, power, switch, etc.)
-                roomId: device.roomId,
-                roomName: device.roomName,
-                isOnline: device.status.isOnline,
-                isOn: device.status.isOn,
-                state: device.status.state,
-                stateDisplay: device.status.stateDisplay, // This will be correctly formatted
-                lastChanged: device.status.lastChanged.toISOString(),
-                lastUpdated: device.status.lastUpdated.toISOString(),
+                deviceType: device.type, // Tipo correctamente mapeado (sensor, power, switch, etc.)
+                model: device.model ?? undefined,
+                manufacturer: device.manufacturer ?? undefined,
+                capabilities: capabilities.map((cap) => ({
+                  capabilityType: cap.capabilityType,
+                  valueType: cap.valueType,
+                  currentValue: cap.currentValue,
+                  meta: cap.meta,
+                })),
               };
 
-              cloudClient.emit("device:state:update", stateUpdate);
-              logger.debug("Device state update sent to cloud", {
+              cloudClient.emit("device:update", deviceUpdate);
+              logger.debug("Device update sent to cloud", {
                 entityId,
-                type: device.type,
-                stateDisplay: device.status.stateDisplay,
+                deviceType: device.type,
+                capabilities: capabilities.map((c) => c.capabilityType),
               });
             } else {
               logger.debug(
