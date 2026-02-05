@@ -59,6 +59,24 @@ export interface CloudEventMap {
 }
 
 /**
+ * Device state update payload for cloud
+ */
+export interface DeviceStateUpdate {
+  id: string;
+  entityId: string;
+  name: string;
+  type: string;
+  roomId: string | null;
+  roomName: string | null;
+  isOnline: boolean;
+  isOn: boolean | null;
+  state: string;
+  stateDisplay: string;
+  lastChanged: string;
+  lastUpdated: string;
+}
+
+/**
  * Cloud response types (events sent TO cloud without callback)
  */
 export interface CloudResponseMap {
@@ -70,6 +88,8 @@ export interface CloudResponseMap {
   "device:control:response": DeviceControlResponse;
   /** Real-time capability state update (fire-and-forget) */
   "capability:update": CapabilityUpdatePayload;
+  /** Device state update when entity state changes */
+  "device:state:update": DeviceStateUpdate;
 }
 
 /**
