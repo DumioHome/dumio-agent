@@ -8,7 +8,7 @@ import { Agent } from "./presentation/Agent.js";
 import { HttpServer } from "./presentation/HttpServer.js";
 import type { EntityState, HAEventMessage } from "./domain/index.js";
 import type { ConnectionState } from "./domain/ports/IHomeAssistantClient.js";
-import type { AgentHealthData } from "./domain/ports/ICloudClient.js";
+import type { AgentHealthData, DeviceStateUpdate } from "./domain/ports/ICloudClient.js";
 
 // Agent version
 const AGENT_VERSION = "1.0.0";
@@ -222,6 +222,66 @@ async function main(): Promise<void> {
         state: newState.state,
         attributes: Object.keys(newState.attributes),
       });
+      
+      // Send device state update to cloud if enabled (async, fire and forget)
+      if (cloudClient && cloudClient.connectionState === "connected") {
+        // Execute async operation without blocking
+        (async () => {
+          try {
+            // Get the current state of the entity (already have newState, but need full device info)
+            // Get the device with full details for this entity
+            // Use search filter which includes entityId matching
+            const devices = await agent.getDevicesWithDetails({
+              search: entityId,
+              includeAll: true,
+            });
+
+            // Find the device matching the entityId exactly
+            const device = devices.find((d) => d.entityId === entityId);
+
+            if (device) {
+              // Map device to cloud update format with correct type and stateDisplay
+              const stateUpdate: DeviceStateUpdate = {
+                id: device.id,
+                entityId: device.entityId,
+                name: device.name,
+                type: device.type, // This will be correctly mapped (sensor, power, switch, etc.)
+                roomId: device.roomId,
+                roomName: device.roomName,
+                isOnline: device.status.isOnline,
+                isOn: device.status.isOn,
+                state: device.status.state,
+                stateDisplay: device.status.stateDisplay, // This will be correctly formatted
+                lastChanged: device.status.lastChanged.toISOString(),
+                lastUpdated: device.status.lastUpdated.toISOString(),
+              };
+
+              cloudClient.emit("device:state:update", stateUpdate);
+              logger.debug("Device state update sent to cloud", {
+                entityId,
+                type: device.type,
+                stateDisplay: device.status.stateDisplay,
+              });
+            } else {
+              logger.debug(
+                "Device not found for entity, skipping cloud update",
+                { entityId }
+              );
+            }
+          } catch (error) {
+            logger.error("Failed to send device state update to cloud", {
+              entityId,
+              error,
+            });
+          }
+        })().catch((error) => {
+          logger.error("Unhandled error in device state update handler", {
+            entityId,
+            error,
+          });
+        });
+      }
+      
       // Don't invalidate on every state change (too frequent)
       // Only invalidate on significant changes like device added/removed
     },
