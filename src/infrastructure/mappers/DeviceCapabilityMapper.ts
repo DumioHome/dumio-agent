@@ -95,13 +95,17 @@ export class DeviceCapabilityMapper {
       });
     }
 
-    // Add power capability
-    if (attributes.power !== undefined) {
+    // Add power capability (value can be in attributes.power or in state - HA often uses state)
+    if (type === "power" || attributes.power !== undefined) {
+      const powerValue =
+        attributes.power !== undefined
+          ? attributes.power
+          : parseFloat(status.state) || 0;
       capabilities.push({
         capabilityType: "power",
         valueType: "number",
-        currentValue: { value: attributes.power },
-        meta: { unit: "W" },
+        currentValue: { value: powerValue },
+        meta: { unit: attributes.unit ?? "W" },
       });
     }
 
@@ -175,6 +179,17 @@ export class DeviceCapabilityMapper {
         valueType: "boolean",
         currentValue: { on: status.state === "locked" },
         meta: { description: "Bloqueado/Desbloqueado" },
+      });
+    }
+
+    // For generic sensor type without specific attributes, add capability from state
+    // (so currentValue is always sent on state change, same as power and switch)
+    if (type === "sensor" && capabilities.length === 0) {
+      capabilities.push({
+        capabilityType: "sensor",
+        valueType: "number",
+        currentValue: { value: parseFloat(status.state) || 0 },
+        meta: { unit: status.attributes.unit ?? "" },
       });
     }
 
