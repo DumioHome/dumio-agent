@@ -74,6 +74,7 @@ export interface CloudEventMap {
 
 /**
  * Device update payload for cloud (device:update event)
+ * Note: For updating entity names, use entity:name:update event instead
  */
 export interface DeviceUpdate {
   /** REQUERIDO - UUID del dispositivo en Dumio */
@@ -82,8 +83,6 @@ export interface DeviceUpdate {
   deviceId?: string;
   /** Opcional - Array de entity_ids relacionados */
   entityIds?: string[];
-  /** Opcional - Nombre del dispositivo */
-  name?: string;
   /** Opcional - Tipo de dispositivo */
   deviceType?: string;
   /** Opcional - Modelo del dispositivo */

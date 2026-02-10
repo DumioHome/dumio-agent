@@ -51,48 +51,28 @@ describe('UpdateDeviceFromCloud', () => {
     useCase = new UpdateDeviceFromCloud(mockHaClient, mockLogger);
   });
 
-  it('should update entity registry successfully when name is provided', async () => {
+  it('should update device registry when deviceId and model are provided', async () => {
     const deviceUpdate: DeviceUpdate = {
       id: 'device-uuid-123',
       deviceId: 'ha-device-123',
-      entityIds: ['light.living_room'],
-      name: 'Nuevo Nombre',
+      model: 'Modelo XYZ',
     };
 
     const result = await useCase.execute({ deviceUpdate });
 
     expect(mockHaClient.sendCommand).toHaveBeenCalledWith({
-      type: 'config/entity_registry/update',
-      entity_id: 'light.living_room',
-      name: 'Nuevo Nombre',
+      type: 'config/device_registry/update',
+      device_id: 'ha-device-123',
+      model: 'Modelo XYZ',
     });
     expect(result.success).toBe(true);
-    expect(result.updatedEntities).toContain('light.living_room');
     expect(result.message).toContain('successfully');
   });
 
-  it('should update multiple entities when multiple entityIds are provided', async () => {
+  it('should update device registry with model and manufacturer', async () => {
     const deviceUpdate: DeviceUpdate = {
       id: 'device-uuid-123',
       deviceId: 'ha-device-123',
-      entityIds: ['light.living_room', 'switch.living_room'],
-      name: 'Sala de Estar',
-    };
-
-    const result = await useCase.execute({ deviceUpdate });
-
-    expect(mockHaClient.sendCommand).toHaveBeenCalledTimes(3); // 2 entities + 1 device registry
-    expect(result.success).toBe(true);
-    expect(result.updatedEntities).toHaveLength(2);
-    expect(result.updatedEntities).toContain('light.living_room');
-    expect(result.updatedEntities).toContain('switch.living_room');
-  });
-
-  it('should update device registry when deviceId is provided', async () => {
-    const deviceUpdate: DeviceUpdate = {
-      id: 'device-uuid-123',
-      deviceId: 'ha-device-123',
-      name: 'Dispositivo Actualizado',
       model: 'Modelo XYZ',
       manufacturer: 'Fabricante ABC',
     };
@@ -102,43 +82,26 @@ describe('UpdateDeviceFromCloud', () => {
     expect(mockHaClient.sendCommand).toHaveBeenCalledWith({
       type: 'config/device_registry/update',
       device_id: 'ha-device-123',
-      name_by_user: 'Dispositivo Actualizado',
       model: 'Modelo XYZ',
       manufacturer: 'Fabricante ABC',
     });
     expect(result.success).toBe(true);
   });
 
-  it('should update both entity registry and device registry', async () => {
+  it('should update device registry with only manufacturer', async () => {
     const deviceUpdate: DeviceUpdate = {
       id: 'device-uuid-123',
       deviceId: 'ha-device-123',
-      entityIds: ['light.living_room'],
-      name: 'Luz Principal',
-      model: 'Modelo 2024',
+      manufacturer: 'Fabricante ABC',
     };
 
     const result = await useCase.execute({ deviceUpdate });
 
-    // Should update entity registry
-    expect(mockHaClient.sendCommand).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'config/entity_registry/update',
-        entity_id: 'light.living_room',
-        name: 'Luz Principal',
-      })
-    );
-
-    // Should update device registry
-    expect(mockHaClient.sendCommand).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'config/device_registry/update',
-        device_id: 'ha-device-123',
-        name_by_user: 'Luz Principal',
-        model: 'Modelo 2024',
-      })
-    );
-
+    expect(mockHaClient.sendCommand).toHaveBeenCalledWith({
+      type: 'config/device_registry/update',
+      device_id: 'ha-device-123',
+      manufacturer: 'Fabricante ABC',
+    });
     expect(result.success).toBe(true);
   });
 
@@ -146,7 +109,7 @@ describe('UpdateDeviceFromCloud', () => {
     const deviceUpdate: DeviceUpdate = {
       id: '',
       deviceId: 'ha-device-123',
-      name: 'Test',
+      model: 'Test Model',
     };
 
     const result = await useCase.execute({ deviceUpdate });
@@ -155,79 +118,36 @@ describe('UpdateDeviceFromCloud', () => {
     expect(result.error).toBe('Missing device id');
   });
 
-  it('should fail when no deviceId or entityIds are provided', async () => {
+  it('should fail when no deviceId is provided and no metadata to update', async () => {
     const deviceUpdate: DeviceUpdate = {
       id: 'device-uuid-123',
-      name: 'Test',
+      entityIds: ['light.living_room'],
+      // No model or manufacturer
     };
 
     const result = await useCase.execute({ deviceUpdate });
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('Missing deviceId or entityIds');
-  });
-
-  it('should handle entity registry update failure gracefully', async () => {
-    mockHaClient.sendCommand = vi.fn()
-      .mockResolvedValueOnce({
-        success: false,
-        error: { message: 'Entity not found' },
-        id: 1,
-        type: 'result',
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        id: 2,
-        type: 'result',
-        result: {},
-      });
-
-    const deviceUpdate: DeviceUpdate = {
-      id: 'device-uuid-123',
-      entityIds: ['light.invalid', 'light.valid'],
-      name: 'Test',
-    };
-
-    const result = await useCase.execute({ deviceUpdate });
-
-    // Should continue with other entities even if one fails
-    expect(result.success).toBe(true);
-    expect(result.updatedEntities).toContain('light.valid');
-    expect(mockLogger.error).toHaveBeenCalledWith(
-      'Failed to update entity registry',
-      expect.objectContaining({
-        entityId: 'light.invalid',
-      })
-    );
+    expect(result.error).toContain('No valid update targets');
   });
 
   it('should handle device registry update failure gracefully', async () => {
-    mockHaClient.sendCommand = vi.fn()
-      .mockResolvedValueOnce({
-        success: true,
-        id: 1,
-        type: 'result',
-        result: {},
-      })
-      .mockResolvedValueOnce({
-        success: false,
-        error: { message: 'Device not found' },
-        id: 2,
-        type: 'result',
-      });
+    mockHaClient.sendCommand = vi.fn().mockResolvedValue({
+      success: false,
+      error: { message: 'Device not found' },
+      id: 1,
+      type: 'result',
+    });
 
     const deviceUpdate: DeviceUpdate = {
       id: 'device-uuid-123',
       deviceId: 'ha-device-123',
-      entityIds: ['light.living_room'],
-      name: 'Test',
+      model: 'Test Model',
     };
 
     const result = await useCase.execute({ deviceUpdate });
 
-    // Should still succeed if entity registry update worked
-    expect(result.success).toBe(true);
-    expect(result.updatedEntities).toContain('light.living_room');
+    expect(result.success).toBe(false);
     expect(mockLogger.error).toHaveBeenCalledWith(
       'Failed to update device registry',
       expect.objectContaining({
@@ -240,8 +160,7 @@ describe('UpdateDeviceFromCloud', () => {
     const deviceUpdate: DeviceUpdate = {
       id: 'device-uuid-123',
       deviceId: 'ha-device-123',
-      entityIds: ['light.living_room'],
-      name: 'Test',
+      model: 'Test Model',
       deviceCategoryId: 'category-123',
     };
 
@@ -255,36 +174,68 @@ describe('UpdateDeviceFromCloud', () => {
     );
   });
 
-  it('should succeed but not update anything if no metadata is provided', async () => {
+  it('should fail when no metadata is provided', async () => {
     const deviceUpdate: DeviceUpdate = {
       id: 'device-uuid-123',
       deviceId: 'ha-device-123',
-      entityIds: ['light.living_room'],
-      // No name, model, or manufacturer
+      // No model or manufacturer
     };
 
     const result = await useCase.execute({ deviceUpdate });
 
-    // Should succeed but not update anything since there's no name to update
     expect(result.success).toBe(false);
     expect(result.error).toContain('No valid update targets');
     expect(mockHaClient.sendCommand).not.toHaveBeenCalled();
   });
 
-  it('should update device registry with only name', async () => {
+  it('should log device registry update', async () => {
     const deviceUpdate: DeviceUpdate = {
       id: 'device-uuid-123',
       deviceId: 'ha-device-123',
-      name: 'Solo Nombre',
+      model: 'Test Model',
+      manufacturer: 'Test Manufacturer',
+    };
+
+    await useCase.execute({ deviceUpdate });
+
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'Updated device registry',
+      expect.objectContaining({
+        deviceId: 'ha-device-123',
+        updates: {
+          model: 'Test Model',
+          manufacturer: 'Test Manufacturer',
+        },
+      })
+    );
+  });
+
+  it('should handle device registry update exceptions gracefully', async () => {
+    // Mock sendCommand to throw an error when called
+    mockHaClient.sendCommand = vi.fn().mockRejectedValue(
+      new Error('Network error')
+    );
+
+    const deviceUpdate: DeviceUpdate = {
+      id: 'device-uuid-123',
+      deviceId: 'ha-device-123',
+      model: 'Test Model',
     };
 
     const result = await useCase.execute({ deviceUpdate });
 
-    expect(mockHaClient.sendCommand).toHaveBeenCalledWith({
-      type: 'config/device_registry/update',
-      device_id: 'ha-device-123',
-      name_by_user: 'Solo Nombre',
-    });
-    expect(result.success).toBe(true);
+    // When updateDeviceRegistry fails, it's caught and logged, but deviceRegistryUpdated stays false
+    // So the result will be "No valid update targets found"
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('No valid update targets');
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Failed to update device registry',
+      expect.objectContaining({
+        deviceId: 'ha-device-123',
+        error: 'Network error',
+      })
+    );
+    // Should have attempted to call sendCommand
+    expect(mockHaClient.sendCommand).toHaveBeenCalled();
   });
 });

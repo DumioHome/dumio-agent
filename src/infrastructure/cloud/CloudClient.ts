@@ -451,7 +451,6 @@ export class CloudClient implements ICloudClient {
         this.logger.debug("Device updated received from cloud", {
           id: data.id,
           deviceId: data.deviceId,
-          name: data.name,
           deviceCategoryId: data.deviceCategoryId,
         });
         // This will be handled by the registered handler in the application layer

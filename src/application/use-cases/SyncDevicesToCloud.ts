@@ -81,7 +81,6 @@ export class SyncDevicesToCloud {
         deviceCount: cloudDevices.length,
         devices: cloudDevices.map((d) => ({
           deviceId: d.deviceId,
-          name: d.name,
           type: d.deviceType,
           entityCount: d.entityIds.length,
           capabilities: d.capabilities.length,
@@ -146,6 +145,7 @@ export class SyncDevicesToCloud {
   /**
    * Create a CloudDevice from a single entity
    * Uses the device registry ID as deviceId to group entities from the same physical device
+   * Note: name field is not included - device names are managed via GraphQL mutations
    */
   private createCloudDeviceFromEntity(device: Device): CloudDevice {
     // Extract capabilities for this entity
@@ -158,7 +158,6 @@ export class SyncDevicesToCloud {
       // This entity's ID
       entityIds: [device.entityId],
       deviceType: device.type,
-      name: device.name,
       model: device.model,
       manufacturer: device.manufacturer,
       roomName: device.roomName,

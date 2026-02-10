@@ -257,7 +257,8 @@ describe('SyncDevicesToCloud', () => {
     expect(lightDevice).toBeDefined();
     expect(lightDevice.deviceId).toBe('device1');
     expect(lightDevice.deviceType).toBe('light');
-    expect(lightDevice.name).toBe('Living Room Light');
+    // name field is no longer sent - device names are managed via GraphQL mutations
+    expect(lightDevice.name).toBeUndefined();
     expect(lightDevice.manufacturer).toBe('Philips');
     expect(lightDevice.model).toBe('Smart Bulb E27');
     expect(lightDevice.roomName).toBe('Sala de Estar');
@@ -283,7 +284,8 @@ describe('SyncDevicesToCloud', () => {
     expect(switchDevice).toBeDefined();
     expect(switchDevice.deviceId).toBe('device2');
     expect(switchDevice.deviceType).toBe('switch');
-    expect(switchDevice.name).toBe('Kitchen Switch');
+    // name field is no longer sent - device names are managed via GraphQL mutations
+    expect(switchDevice.name).toBeUndefined();
     expect(switchDevice.manufacturer).toBe('TP-Link');
     expect(switchDevice.model).toBe('Smart Plug');
     expect(switchDevice.entityIds).toEqual(['switch.kitchen']);

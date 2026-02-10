@@ -16,7 +16,6 @@ export interface UpdateDeviceFromCloudInput {
 export interface UpdateDeviceFromCloudOutput {
   success: boolean;
   message: string;
-  updatedEntities?: string[];
   error?: string;
 }
 
@@ -25,9 +24,10 @@ export interface UpdateDeviceFromCloudOutput {
  * when device information changes in Dumio Cloud
  *
  * This handles updates like:
- * - Friendly name changes (entity registry)
- * - Device name changes (device registry)
+ * - Device registry updates (model, manufacturer)
  * - Other metadata updates
+ * 
+ * Note: For updating entity names, use the entity:name:update event instead
  */
 export class UpdateDeviceFromCloud {
   constructor(
@@ -44,7 +44,6 @@ export class UpdateDeviceFromCloud {
       deviceId: deviceUpdate.id,
       haDeviceId: deviceUpdate.deviceId,
       entityIds: deviceUpdate.entityIds,
-      name: deviceUpdate.name,
       deviceCategoryId: deviceUpdate.deviceCategoryId,
       fullPayload: JSON.stringify(deviceUpdate),
     });
@@ -84,43 +83,6 @@ export class UpdateDeviceFromCloud {
         };
       }
 
-      const updatedEntities: string[] = [];
-
-      // Update entity registry if name is provided and we have entityIds
-      if (deviceUpdate.name && entityIds.length > 0) {
-        this.logger.info("Updating entity registry for entities", {
-          entityCount: entityIds.length,
-          entityIds,
-          name: deviceUpdate.name,
-        });
-
-        for (const entityId of entityIds) {
-          try {
-            await this.updateEntityRegistry(entityId, {
-              name: deviceUpdate.name,
-            });
-            updatedEntities.push(entityId);
-            this.logger.info("Successfully updated entity registry", {
-              entityId,
-              name: deviceUpdate.name,
-            });
-          } catch (error) {
-            this.logger.error("Failed to update entity registry", {
-              entityId,
-              name: deviceUpdate.name,
-              error: error instanceof Error ? error.message : "Unknown error",
-              errorStack: error instanceof Error ? error.stack : undefined,
-            });
-            // Continue with other entities even if one fails
-          }
-        }
-      } else if (deviceUpdate.name && entityIds.length === 0) {
-        this.logger.warn("Name provided but no entityIds to update", {
-          name: deviceUpdate.name,
-          deviceId: deviceUpdate.id,
-        });
-      }
-
       let deviceRegistryUpdated = false;
 
       // Update device registry if deviceId is provided
@@ -128,9 +90,6 @@ export class UpdateDeviceFromCloud {
         try {
           const deviceRegistryUpdate: Record<string, unknown> = {};
           
-          if (deviceUpdate.name) {
-            deviceRegistryUpdate.name_by_user = deviceUpdate.name;
-          }
           if (deviceUpdate.model) {
             deviceRegistryUpdate.model = deviceUpdate.model;
           }
@@ -155,7 +114,7 @@ export class UpdateDeviceFromCloud {
         }
       }
 
-      if (updatedEntities.length === 0 && !deviceRegistryUpdated) {
+      if (!deviceRegistryUpdated) {
         return {
           success: false,
           message: "No updates were applied",
@@ -165,8 +124,7 @@ export class UpdateDeviceFromCloud {
 
       return {
         success: true,
-        message: `Device updated successfully. Updated ${updatedEntities.length} entities`,
-        updatedEntities,
+        message: `Device updated successfully`,
       };
     } catch (error) {
       const errorMessage =
@@ -181,64 +139,6 @@ export class UpdateDeviceFromCloud {
         error: errorMessage,
       };
     }
-  }
-
-  /**
-   * Update entity registry in Home Assistant
-   */
-  private async updateEntityRegistry(
-    entityId: string,
-    updates: { name?: string }
-  ): Promise<void> {
-    const updateData: Record<string, unknown> = {};
-    
-    if (updates.name !== undefined) {
-      updateData.name = updates.name;
-    }
-
-    if (Object.keys(updateData).length === 0) {
-      this.logger.warn("No update data provided for entity registry", {
-        entityId,
-      });
-      return;
-    }
-
-    const command = {
-      type: "config/entity_registry/update",
-      entity_id: entityId,
-      ...updateData,
-    };
-
-    this.logger.debug("Sending entity registry update command", {
-      entityId,
-      command: JSON.stringify(command),
-    });
-
-    const result = await this.haClient.sendCommand(
-      command as Parameters<typeof this.haClient.sendCommand>[0]
-    );
-
-    this.logger.debug("Entity registry update response", {
-      entityId,
-      success: result.success,
-      error: result.error,
-      result: result.result,
-    });
-
-    if (!result.success) {
-      const errorMessage = result.error?.message ?? "Failed to update entity registry";
-      this.logger.error("Entity registry update failed", {
-        entityId,
-        error: errorMessage,
-        errorCode: result.error?.code,
-      });
-      throw new Error(errorMessage);
-    }
-
-    this.logger.info("Entity registry update successful", {
-      entityId,
-      name: updates.name,
-    });
   }
 
   /**
