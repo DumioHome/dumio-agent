@@ -89,6 +89,7 @@ export type CloudDeviceType =
 /**
  * Cloud device format for sync
  * Represents a physical device that may have multiple entities/capabilities
+ * Note: name field removed - device names are managed via GraphQL mutations
  */
 export interface CloudDevice {
   /** Home Assistant device ID (physical device identifier) */
@@ -97,8 +98,6 @@ export interface CloudDevice {
   entityIds: string[];
   /** Primary device type category (most relevant type from entities) */
   deviceType: CloudDeviceType;
-  /** Device friendly name */
-  name: string;
   /** Device model */
   model: string | null;
   /** Device manufacturer */

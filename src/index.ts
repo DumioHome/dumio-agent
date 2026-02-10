@@ -512,7 +512,6 @@ async function main(): Promise<void> {
             id: deviceUpdate.id,
             deviceId: deviceUpdate.deviceId,
             entityIds: deviceUpdate.entityIds,
-            name: deviceUpdate.name,
             deviceCategoryId: deviceUpdate.deviceCategoryId,
             fullPayload: JSON.stringify(deviceUpdate),
           });
@@ -528,7 +527,6 @@ async function main(): Promise<void> {
             if (result.success) {
               logger.info("Device updated successfully in Home Assistant", {
                 deviceId: deviceUpdate.id,
-                updatedEntities: result.updatedEntities,
                 message: result.message,
               });
             } else {
@@ -536,7 +534,6 @@ async function main(): Promise<void> {
                 deviceId: deviceUpdate.id,
                 haDeviceId: deviceUpdate.deviceId,
                 entityIds: deviceUpdate.entityIds,
-                name: deviceUpdate.name,
                 error: result.error,
                 message: result.message,
               });
@@ -546,7 +543,6 @@ async function main(): Promise<void> {
               deviceId: deviceUpdate.id,
               haDeviceId: deviceUpdate.deviceId,
               entityIds: deviceUpdate.entityIds,
-              name: deviceUpdate.name,
               error: error instanceof Error ? error.message : "Unknown error",
               errorStack: error instanceof Error ? error.stack : undefined,
             });
