@@ -46,6 +46,7 @@ export class UpdateDeviceFromCloud {
       entityIds: deviceUpdate.entityIds,
       name: deviceUpdate.name,
       deviceCategoryId: deviceUpdate.deviceCategoryId,
+      fullPayload: JSON.stringify(deviceUpdate),
     });
 
     try {
@@ -58,10 +59,23 @@ export class UpdateDeviceFromCloud {
         };
       }
 
+      // Normalize entityIds - handle both singular entityId and plural entityIds
+      let entityIds: string[] = [];
+      if (deviceUpdate.entityIds && deviceUpdate.entityIds.length > 0) {
+        entityIds = deviceUpdate.entityIds;
+      } else if ((deviceUpdate as unknown as { entityId?: string }).entityId) {
+        // Handle singular entityId if provided
+        entityIds = [(deviceUpdate as unknown as { entityId: string }).entityId];
+        this.logger.debug("Normalized singular entityId to array", {
+          entityId: entityIds[0],
+        });
+      }
+
       // If no deviceId or entityIds, we can't update anything
-      if (!deviceUpdate.deviceId && (!deviceUpdate.entityIds || deviceUpdate.entityIds.length === 0)) {
+      if (!deviceUpdate.deviceId && entityIds.length === 0) {
         this.logger.warn("Cannot update device: no deviceId or entityIds provided", {
           deviceId: deviceUpdate.id,
+          receivedEntityIds: deviceUpdate.entityIds,
         });
         return {
           success: false,
@@ -73,25 +87,38 @@ export class UpdateDeviceFromCloud {
       const updatedEntities: string[] = [];
 
       // Update entity registry if name is provided and we have entityIds
-      if (deviceUpdate.name && deviceUpdate.entityIds && deviceUpdate.entityIds.length > 0) {
-        for (const entityId of deviceUpdate.entityIds) {
+      if (deviceUpdate.name && entityIds.length > 0) {
+        this.logger.info("Updating entity registry for entities", {
+          entityCount: entityIds.length,
+          entityIds,
+          name: deviceUpdate.name,
+        });
+
+        for (const entityId of entityIds) {
           try {
             await this.updateEntityRegistry(entityId, {
               name: deviceUpdate.name,
             });
             updatedEntities.push(entityId);
-            this.logger.info("Updated entity registry", {
+            this.logger.info("Successfully updated entity registry", {
               entityId,
               name: deviceUpdate.name,
             });
           } catch (error) {
             this.logger.error("Failed to update entity registry", {
               entityId,
+              name: deviceUpdate.name,
               error: error instanceof Error ? error.message : "Unknown error",
+              errorStack: error instanceof Error ? error.stack : undefined,
             });
             // Continue with other entities even if one fails
           }
         }
+      } else if (deviceUpdate.name && entityIds.length === 0) {
+        this.logger.warn("Name provided but no entityIds to update", {
+          name: deviceUpdate.name,
+          deviceId: deviceUpdate.id,
+        });
       }
 
       let deviceRegistryUpdated = false;
@@ -170,20 +197,48 @@ export class UpdateDeviceFromCloud {
     }
 
     if (Object.keys(updateData).length === 0) {
+      this.logger.warn("No update data provided for entity registry", {
+        entityId,
+      });
       return;
     }
 
-    const result = await this.haClient.sendCommand({
+    const command = {
       type: "config/entity_registry/update",
       entity_id: entityId,
       ...updateData,
-    } as Parameters<typeof this.haClient.sendCommand>[0]);
+    };
+
+    this.logger.debug("Sending entity registry update command", {
+      entityId,
+      command: JSON.stringify(command),
+    });
+
+    const result = await this.haClient.sendCommand(
+      command as Parameters<typeof this.haClient.sendCommand>[0]
+    );
+
+    this.logger.debug("Entity registry update response", {
+      entityId,
+      success: result.success,
+      error: result.error,
+      result: result.result,
+    });
 
     if (!result.success) {
-      throw new Error(
-        result.error?.message ?? "Failed to update entity registry"
-      );
+      const errorMessage = result.error?.message ?? "Failed to update entity registry";
+      this.logger.error("Entity registry update failed", {
+        entityId,
+        error: errorMessage,
+        errorCode: result.error?.code,
+      });
+      throw new Error(errorMessage);
     }
+
+    this.logger.info("Entity registry update successful", {
+      entityId,
+      name: updates.name,
+    });
   }
 
   /**

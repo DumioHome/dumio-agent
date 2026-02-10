@@ -3,7 +3,7 @@
 
 name: "Dumio Agent"
 description: "Agente inteligente para Home Assistant con comunicación WebSocket y soporte cloud"
-version: "1.1.1"
+version: "1.1.2"
 slug: "dumio_agent"
 url: "https://github.com/DumioHome/dumio-agent"
 

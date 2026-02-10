@@ -10,3 +10,4 @@ export * from "./DeviceStateWatcher.js";
 export * from "./DeviceController.js";
 export * from "./CapabilitySyncManager.js";
 export * from "./UpdateDeviceFromCloud.js";
+export * from "./UpdateEntityName.js";
