@@ -177,7 +177,7 @@ export class UpdateDeviceFromCloud {
       type: "config/entity_registry/update",
       entity_id: entityId,
       ...updateData,
-    });
+    } as Parameters<typeof this.haClient.sendCommand>[0]);
 
     if (!result.success) {
       throw new Error(
@@ -201,7 +201,7 @@ export class UpdateDeviceFromCloud {
       type: "config/device_registry/update",
       device_id: deviceId,
       ...updates,
-    });
+    } as Parameters<typeof this.haClient.sendCommand>[0]);
 
     if (!result.success) {
       throw new Error(
