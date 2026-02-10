@@ -3,13 +3,17 @@ import { loadConfig, validateConfig } from "./infrastructure/config/Config.js";
 import { PinoLogger } from "./infrastructure/logging/PinoLogger.js";
 import { HomeAssistantClient } from "./infrastructure/websocket/HomeAssistantClient.js";
 import { CloudClient } from "./infrastructure/cloud/CloudClient.js";
+import {
+  ManagedHomeAssistantConnection,
+  ManagedCloudConnection,
+} from "./infrastructure/connections/index.js";
+import { ConnectionManager } from "./application/ConnectionManager.js";
 import { getDumioDeviceId } from "./infrastructure/utils/deviceId.js";
 import { Agent } from "./presentation/Agent.js";
 import { HttpServer } from "./presentation/HttpServer.js";
 import type { EntityState, HAEventMessage } from "./domain/index.js";
 import type { ConnectionState } from "./domain/ports/IHomeAssistantClient.js";
-import type { AgentHealthData, DeviceUpdate } from "./domain/ports/ICloudClient.js";
-import { DeviceCapabilityMapper } from "./infrastructure/mappers/index.js";
+import type { AgentHealthData } from "./domain/ports/ICloudClient.js";
 
 // Agent version
 const AGENT_VERSION = "1.0.0";
@@ -72,13 +76,14 @@ async function main(): Promise<void> {
     startHealthCheckServer(logger);
   }
 
-  // Initialize Home Assistant client
+  // Initialize Home Assistant client (heartbeat ping/pong + pong timeout en el cliente)
   const haClient = new HomeAssistantClient(
     {
       url: config.homeAssistant.url,
       accessToken: config.homeAssistant.accessToken,
       reconnectInterval: config.reconnection.interval,
       maxReconnectAttempts: config.reconnection.maxAttempts,
+      pongTimeoutMs: 15000,
     },
     logger.child({ component: "HomeAssistantClient" })
   );
@@ -91,6 +96,7 @@ async function main(): Promise<void> {
         socketUrl: config.cloud.socketUrl,
         apiKey: config.cloud.apiKey,
         agentId: config.agent.name,
+        activityTimeoutMs: 45000,
       },
       logger.child({ component: "CloudClient" })
     );
@@ -211,6 +217,72 @@ async function main(): Promise<void> {
     }
   };
 
+  /** Debounce: run full sync (same as POST /api/devices/sync) at most once per interval when state changes */
+  const SYNC_ON_STATE_CHANGE_DEBOUNCE_MS = 5000;
+  let syncOnStateChangeTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Run the same full sync as POST /api/devices/sync.
+   * Uses homeId from CapabilitySyncManager if available, otherwise fetches from cloud (devices:fetch).
+   */
+  const runSyncLikeApiDevicesSync = async (): Promise<void> => {
+    if (!cloudClient || cloudClient.connectionState !== "connected") return;
+    if (!dumioDeviceId) return;
+
+    try {
+      let homeId: string | null =
+        agent.getCapabilitySyncManager()?.getStats().homeId ?? null;
+
+      if (!homeId) {
+        const response = await cloudClient.emitWithCallback(
+          "devices:fetch",
+          { dumioDeviceId },
+          30000
+        );
+        homeId = response.success ? response.homeId ?? null : null;
+      }
+
+      if (!homeId) {
+        logger.debug(
+          "No homeId for sync on state change (use POST /api/devices/sync with homeId first)"
+        );
+        return;
+      }
+
+      const syncResult = await agent.syncDevicesToCloud(homeId);
+      if (syncResult.success) {
+        logger.debug("Sync on state change completed", {
+          syncedDevices: syncResult.syncedDevices,
+        });
+      } else {
+        logger.warn("Sync on state change finished with errors", {
+          error: syncResult.error,
+        });
+      }
+    } catch (error) {
+      logger.error("Sync on state change failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  /**
+   * Schedule a full sync (debounced). Same effect as POST /api/devices/sync.
+   */
+  const scheduleSyncOnStateChange = (): void => {
+    if (!cloudClient || cloudClient.connectionState !== "connected") return;
+
+    if (syncOnStateChangeTimeout) clearTimeout(syncOnStateChangeTimeout);
+    syncOnStateChangeTimeout = setTimeout(() => {
+      syncOnStateChangeTimeout = null;
+      runSyncLikeApiDevicesSync().catch((err) =>
+        logger.error("Scheduled sync on state change failed", {
+          error: err instanceof Error ? err.message : String(err),
+        })
+      );
+    }, SYNC_ON_STATE_CHANGE_DEBOUNCE_MS);
+  };
+
   // Event handlers - notify httpServer of changes to invalidate cache
   const handlers = {
     onStateChange: (
@@ -223,72 +295,9 @@ async function main(): Promise<void> {
         state: newState.state,
         attributes: Object.keys(newState.attributes),
       });
-      
-      // Send device state update to cloud if enabled (async, fire and forget)
-      if (cloudClient && cloudClient.connectionState === "connected") {
-        // Execute async operation without blocking
-        (async () => {
-          try {
-            // Get the current state of the entity (already have newState, but need full device info)
-            // Get the device with full details for this entity
-            // Use search filter which includes entityId matching
-            const devices = await agent.getDevicesWithDetails({
-              search: entityId,
-              includeAll: true,
-            });
 
-            // Find the device matching the entityId exactly
-            const device = devices.find((d) => d.entityId === entityId);
-
-            if (device) {
-              // Extract capabilities with correct capabilityType mapping
-              const capabilities = DeviceCapabilityMapper.extractCapabilities(device);
-
-              // Map device to cloud update format
-              const deviceUpdate: DeviceUpdate = {
-                id: device.id, // UUID del dispositivo en Dumio (requerido)
-                deviceId: device.id, // Identificador del dispositivo en Home Assistant
-                entityIds: [device.entityId], // Array de entity_ids relacionados
-                name: device.name,
-                deviceType: device.type, // Tipo correctamente mapeado (sensor, power, switch, etc.)
-                model: device.model ?? undefined,
-                manufacturer: device.manufacturer ?? undefined,
-                capabilities: capabilities.map((cap) => ({
-                  capabilityType: cap.capabilityType,
-                  valueType: cap.valueType,
-                  currentValue: cap.currentValue,
-                  meta: cap.meta,
-                })),
-              };
-
-              cloudClient.emit("device:update", deviceUpdate);
-              logger.debug("Device update sent to cloud", {
-                entityId,
-                deviceType: device.type,
-                capabilities: capabilities.map((c) => c.capabilityType),
-              });
-            } else {
-              logger.debug(
-                "Device not found for entity, skipping cloud update",
-                { entityId }
-              );
-            }
-          } catch (error) {
-            logger.error("Failed to send device state update to cloud", {
-              entityId,
-              error,
-            });
-          }
-        })().catch((error) => {
-          logger.error("Unhandled error in device state update handler", {
-            entityId,
-            error,
-          });
-        });
-      }
-      
-      // Don't invalidate on every state change (too frequent)
-      // Only invalidate on significant changes like device added/removed
+      // On device state change: run same full sync as /api/devices/sync (debounced)
+      scheduleSyncOnStateChange();
     },
     onEvent: (event: HAEventMessage): void => {
       logger.trace("Event received", {
@@ -330,6 +339,19 @@ async function main(): Promise<void> {
       }
     },
   };
+
+  // ConnectionManager: política única de healthcheck + auto-reconnect; resync tras reconexión
+  const connectionManager = new ConnectionManager(logger);
+  connectionManager.register("homeassistant", new ManagedHomeAssistantConnection(haClient), () =>
+    agent.resyncAfterHaReconnect()
+  );
+  if (cloudClient) {
+    connectionManager.register(
+      "cloud",
+      new ManagedCloudConnection(cloudClient),
+      () => ensureDeviceSyncInitialized()
+    );
+  }
 
   if (dumioDeviceId) {
     logger.info("Dumio Device ID configured", { dumioDeviceId });
@@ -388,9 +410,11 @@ async function main(): Promise<void> {
   // Handle graceful shutdown
   const shutdown = async (): Promise<void> => {
     logger.info("Shutting down...");
-    if (cloudClient) {
-      await cloudClient.disconnect();
+    if (syncOnStateChangeTimeout) {
+      clearTimeout(syncOnStateChangeTimeout);
+      syncOnStateChangeTimeout = null;
     }
+    await connectionManager.stopAll();
     await httpServer.stop();
     await agent.stop();
     process.exit(0);
@@ -414,11 +438,10 @@ async function main(): Promise<void> {
       activeDevices: stats.on,
     });
 
-    // Connect to cloud if enabled
-    if (cloudClient) {
-      try {
-        await cloudClient.connect();
-        logger.info("Connected to cloud", { url: config.cloud.socketUrl });
+    // Arrancar todas las conexiones gestionadas (HA ya conectado por agent.start; Cloud conecta aquí)
+    await connectionManager.startAll();
+    if (cloudClient && cloudClient.connectionState === "connected") {
+      logger.info("Connected to cloud", { url: config.cloud.socketUrl });
 
         // Start health reporting only if dumioDeviceId is configured
         if (getHealthData) {
@@ -492,10 +515,8 @@ async function main(): Promise<void> {
             );
           }
         });
-      } catch (error) {
-        logger.error("Failed to connect to cloud", { error });
-        // Continue running without cloud connection
-      }
+    } else if (cloudClient) {
+      logger.warn("Cloud connection not established after startAll (will retry via healthcheck)");
     }
 
     // Keep the process running

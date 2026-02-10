@@ -63,6 +63,8 @@ export class Agent {
   private getRoomsUseCase: GetRooms;
   private eventSubscription?: { unsubscribe: () => Promise<void> };
   private capabilitySyncManager?: CapabilitySyncManager;
+  /** Handlers guardados para re-suscribir tras reconexión (resync de estados). */
+  private storedEventHandlers?: AgentEventHandlers;
 
   constructor(
     private readonly haClient: IHomeAssistantClient,
@@ -86,6 +88,7 @@ export class Agent {
    */
   async start(handlers?: AgentEventHandlers): Promise<void> {
     this.logger.info("Starting agent", { name: this.config.name });
+    this.storedEventHandlers = handlers;
 
     // Register connection state handler
     if (handlers?.onConnectionChange) {
@@ -111,6 +114,45 @@ export class Agent {
     }
 
     this.logger.info("Agent started successfully");
+  }
+
+  /**
+   * Tras reconexión de HA: refresca caché de estados (getStates) y re-suscribe
+   * a state_changed para que las entidades en HA no queden desfasadas.
+   */
+  async resyncAfterHaReconnect(): Promise<void> {
+    if (this.haClient.connectionState !== "connected") return;
+
+    this.logger.info("Resyncing state after HA reconnect");
+    try {
+      if (this.eventSubscription) {
+        try {
+          await this.eventSubscription.unsubscribe();
+        } catch {
+          // La suscripción anterior puede ser inválida (socket cerrado)
+        }
+        this.eventSubscription = undefined;
+      }
+
+      await this.haClient.getStates();
+
+      if (
+        this.config.subscribeOnConnect &&
+        this.storedEventHandlers &&
+        (this.storedEventHandlers.onEvent || this.storedEventHandlers.onStateChange)
+      ) {
+        this.eventSubscription = await this.subscribeToEventsUseCase.execute({
+          onEvent: this.storedEventHandlers.onEvent,
+          onStateChange: this.storedEventHandlers.onStateChange,
+        });
+      }
+      this.logger.info("Resync after HA reconnect completed");
+    } catch (error) {
+      this.logger.error("Resync after HA reconnect failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }
 
   /**
