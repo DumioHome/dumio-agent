@@ -45,6 +45,16 @@ export interface AgentHealthData {
 }
 
 /**
+ * Entity name update payload (simple event for updating entity friendly name)
+ */
+export interface EntityNameUpdatePayload {
+  /** Entity ID to update (e.g., "switch.tecla_tokyo_un_canal_macroled_interruptor_1") */
+  entityId: string;
+  /** New friendly name for the entity */
+  name: string;
+}
+
+/**
  * Cloud event types (events received FROM cloud)
  */
 export interface CloudEventMap {
@@ -58,6 +68,8 @@ export interface CloudEventMap {
   "capabilities:updated": CapabilitiesUpdatedPayload;
   /** Device updated from cloud (sent when device metadata changes in cloud) */
   "device:updated": DeviceUpdate;
+  /** Entity name update - simple event to update entity friendly name */
+  "entity:name:update": EntityNameUpdatePayload;
 }
 
 /**

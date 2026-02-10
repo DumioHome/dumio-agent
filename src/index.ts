@@ -12,6 +12,7 @@ import { getDumioDeviceId } from "./infrastructure/utils/deviceId.js";
 import { Agent } from "./presentation/Agent.js";
 import { HttpServer } from "./presentation/HttpServer.js";
 import { UpdateDeviceFromCloud } from "./application/use-cases/UpdateDeviceFromCloud.js";
+import { UpdateEntityName } from "./application/use-cases/UpdateEntityName.js";
 import type { EntityState, HAEventMessage } from "./domain/index.js";
 import type { ConnectionState } from "./domain/ports/IHomeAssistantClient.js";
 import type { AgentHealthData } from "./domain/ports/ICloudClient.js";
@@ -510,8 +511,10 @@ async function main(): Promise<void> {
           logger.info("Device updated event received from cloud", {
             id: deviceUpdate.id,
             deviceId: deviceUpdate.deviceId,
+            entityIds: deviceUpdate.entityIds,
             name: deviceUpdate.name,
             deviceCategoryId: deviceUpdate.deviceCategoryId,
+            fullPayload: JSON.stringify(deviceUpdate),
           });
 
           try {
@@ -531,6 +534,9 @@ async function main(): Promise<void> {
             } else {
               logger.warn("Failed to update device in Home Assistant", {
                 deviceId: deviceUpdate.id,
+                haDeviceId: deviceUpdate.deviceId,
+                entityIds: deviceUpdate.entityIds,
+                name: deviceUpdate.name,
                 error: result.error,
                 message: result.message,
               });
@@ -538,7 +544,53 @@ async function main(): Promise<void> {
           } catch (error) {
             logger.error("Error handling device:updated event", {
               deviceId: deviceUpdate.id,
+              haDeviceId: deviceUpdate.deviceId,
+              entityIds: deviceUpdate.entityIds,
+              name: deviceUpdate.name,
               error: error instanceof Error ? error.message : "Unknown error",
+              errorStack: error instanceof Error ? error.stack : undefined,
+            });
+          }
+        });
+
+        // Handle entity name update event from cloud (simple event)
+        cloudClient.on("entity:name:update", async (payload) => {
+          logger.info("Entity name update event received from cloud", {
+            entityId: payload.entityId,
+            name: payload.name,
+          });
+
+          try {
+            const updateUseCase = new UpdateEntityName(
+              haClient,
+              logger.child({ component: "UpdateEntityName" })
+            );
+
+            const result = await updateUseCase.execute({
+              entityId: payload.entityId,
+              name: payload.name,
+            });
+
+            if (result.success) {
+              logger.info("Entity name updated successfully in Home Assistant", {
+                entityId: payload.entityId,
+                name: payload.name,
+                message: result.message,
+              });
+            } else {
+              logger.warn("Failed to update entity name in Home Assistant", {
+                entityId: payload.entityId,
+                name: payload.name,
+                error: result.error,
+                message: result.message,
+              });
+            }
+          } catch (error) {
+            logger.error("Error handling entity:name:update event", {
+              entityId: payload.entityId,
+              name: payload.name,
+              error: error instanceof Error ? error.message : "Unknown error",
+              errorStack: error instanceof Error ? error.stack : undefined,
             });
           }
         });
