@@ -56,6 +56,8 @@ export interface CloudEventMap {
   "device:control": DeviceControlCommand;
   /** Capabilities updated from cloud (sent when capabilities change externally) */
   "capabilities:updated": CapabilitiesUpdatedPayload;
+  /** Device updated from cloud (sent when device metadata changes in cloud) */
+  "device:updated": DeviceUpdate;
 }
 
 /**
@@ -76,6 +78,8 @@ export interface DeviceUpdate {
   model?: string;
   /** Opcional - Fabricante */
   manufacturer?: string;
+  /** Opcional - ID de la categoría del dispositivo */
+  deviceCategoryId?: string;
   /** Opcional - Array de capabilities a actualizar */
   capabilities?: Array<{
     capabilityType: string;

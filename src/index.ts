@@ -11,6 +11,7 @@ import { ConnectionManager } from "./application/ConnectionManager.js";
 import { getDumioDeviceId } from "./infrastructure/utils/deviceId.js";
 import { Agent } from "./presentation/Agent.js";
 import { HttpServer } from "./presentation/HttpServer.js";
+import { UpdateDeviceFromCloud } from "./application/use-cases/UpdateDeviceFromCloud.js";
 import type { EntityState, HAEventMessage } from "./domain/index.js";
 import type { ConnectionState } from "./domain/ports/IHomeAssistantClient.js";
 import type { AgentHealthData } from "./domain/ports/ICloudClient.js";
@@ -502,6 +503,44 @@ async function main(): Promise<void> {
             success: result.success,
             message: result.message,
           });
+        });
+
+        // Handle device updated event from cloud
+        cloudClient.on("device:updated", async (deviceUpdate) => {
+          logger.info("Device updated event received from cloud", {
+            id: deviceUpdate.id,
+            deviceId: deviceUpdate.deviceId,
+            name: deviceUpdate.name,
+            deviceCategoryId: deviceUpdate.deviceCategoryId,
+          });
+
+          try {
+            const updateUseCase = new UpdateDeviceFromCloud(
+              haClient,
+              logger.child({ component: "UpdateDeviceFromCloud" })
+            );
+
+            const result = await updateUseCase.execute({ deviceUpdate });
+
+            if (result.success) {
+              logger.info("Device updated successfully in Home Assistant", {
+                deviceId: deviceUpdate.id,
+                updatedEntities: result.updatedEntities,
+                message: result.message,
+              });
+            } else {
+              logger.warn("Failed to update device in Home Assistant", {
+                deviceId: deviceUpdate.id,
+                error: result.error,
+                message: result.message,
+              });
+            }
+          } catch (error) {
+            logger.error("Error handling device:updated event", {
+              deviceId: deviceUpdate.id,
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
         });
 
         // On cloud connect/reconnect: restore or initialize sync so device control works
