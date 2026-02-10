@@ -29,7 +29,10 @@ export interface HomeAssistantClientConfig {
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
   commandTimeout?: number;
+  /** Intervalo entre pings (ms). Por defecto 30s. */
   pingInterval?: number;
+  /** Tiempo máximo para recibir pong tras un ping (ms). Si se supera, se fuerza reconexión. Por defecto 15s. */
+  pongTimeoutMs?: number;
 }
 
 /**
@@ -44,6 +47,8 @@ export class HomeAssistantClient implements IHomeAssistantClient {
   private reconnectAttempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
+  /** Timeout de pong: si no llega pong tras un ping, se fuerza reconexión (evita conexiones zombie). */
+  private pongTimeoutTimer: NodeJS.Timeout | null = null;
   private entityStates = new Map<string, EntityState>();
 
   // Event handlers
@@ -61,6 +66,7 @@ export class HomeAssistantClient implements IHomeAssistantClient {
       maxReconnectAttempts: 10,
       commandTimeout: 30000,
       pingInterval: 30000,
+      pongTimeoutMs: 15000,
       ...config,
     };
   }
@@ -113,7 +119,7 @@ export class HomeAssistantClient implements IHomeAssistantClient {
         });
 
         this.ws.on("close", (code, reason) => {
-          this.logger.info("WebSocket closed", {
+          this.logger.info("socket closed → reopening", {
             code,
             reason: reason.toString(),
           });
@@ -124,8 +130,15 @@ export class HomeAssistantClient implements IHomeAssistantClient {
           this.logger.error("WebSocket error", error);
           if (this._connectionState === "connecting") {
             reject(error);
+          } else if (this._connectionState === "connected") {
+            // Conexión zombie o error de red: forzar reconexión
+            this.logger.info("socket error → reopening");
+            this.forceReconnect().catch((err) =>
+              this.logger.error("Force reconnect after error failed", { err })
+            );
+          } else {
+            this.setConnectionState("error");
           }
-          this.setConnectionState("error");
         });
       } catch (error) {
         this.logger.error("Failed to create WebSocket", error);
@@ -178,6 +191,7 @@ export class HomeAssistantClient implements IHomeAssistantClient {
           break;
 
         case "pong":
+          this.clearPongTimeout();
           this.logger.trace("Pong received", { id: message.id });
           break;
       }
@@ -245,6 +259,7 @@ export class HomeAssistantClient implements IHomeAssistantClient {
   }
 
   private handleDisconnect(): void {
+    this.clearPongTimeout();
     this.stopPingInterval();
     this.setConnectionState("disconnected");
     this.ws = null;
@@ -257,6 +272,49 @@ export class HomeAssistantClient implements IHomeAssistantClient {
     this.pendingCommands.clear();
 
     // Attempt reconnection
+    this.scheduleReconnect();
+  }
+
+  private clearPongTimeout(): void {
+    if (this.pongTimeoutTimer) {
+      clearTimeout(this.pongTimeoutTimer);
+      this.pongTimeoutTimer = null;
+    }
+  }
+
+  /**
+   * Cierra el socket actual y programa reconexión (sin contar como intento fallido).
+   * Usado ante heartbeat timeout, error de escritura o cierre inesperado.
+   */
+  async forceReconnect(): Promise<void> {
+    if (this._connectionState === "disconnected") return;
+
+    this.logger.info("Force reconnect: closing current socket and reopening");
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.clearPongTimeout();
+    this.stopPingInterval();
+    this.reconnectAttempts = 0;
+
+    if (this.ws) {
+      try {
+        this.ws.removeAllListeners();
+        this.ws.close();
+      } catch {
+        // ignore
+      }
+      this.ws = null;
+    }
+
+    this.pendingCommands.forEach((pending) => {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error("Connection closed"));
+    });
+    this.pendingCommands.clear();
+    this.setConnectionState("disconnected");
     this.scheduleReconnect();
   }
 
@@ -284,14 +342,36 @@ export class HomeAssistantClient implements IHomeAssistantClient {
 
   private startPingInterval(): void {
     this.stopPingInterval();
-    this.pingTimer = setInterval(() => {
+    const intervalMs = this.config.pingInterval ?? 30000;
+    const pongTimeoutMs = this.config.pongTimeoutMs ?? 15000;
+
+    const doPing = (): void => {
+      this.clearPongTimeout();
       this.ping().catch((error) => {
         this.logger.error("Ping failed", error);
+        this.logger.info("heartbeat timeout → reconnecting");
+        this.forceReconnect().catch((err) =>
+          this.logger.error("Force reconnect after ping fail failed", { err })
+        );
+        return;
       });
-    }, this.config.pingInterval ?? 30000);
+      this.pongTimeoutTimer = setTimeout(() => {
+        this.pongTimeoutTimer = null;
+        this.logger.warn("heartbeat timeout → reconnecting");
+        this.forceReconnect().catch((err) =>
+          this.logger.error("Force reconnect after pong timeout failed", {
+            err,
+          })
+        );
+      }, pongTimeoutMs);
+    };
+
+    doPing();
+    this.pingTimer = setInterval(doPing, intervalMs);
   }
 
   private stopPingInterval(): void {
+    this.clearPongTimeout();
     if (this.pingTimer) {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
@@ -302,7 +382,15 @@ export class HomeAssistantClient implements IHomeAssistantClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error("WebSocket is not connected");
     }
-    this.ws.send(JSON.stringify(data));
+    try {
+      this.ws.send(JSON.stringify(data));
+    } catch (error) {
+      this.logger.warn("Write error on socket → reopening", { error });
+      this.forceReconnect().catch((err) =>
+        this.logger.error("Force reconnect after write error failed", { err })
+      );
+      throw error;
+    }
   }
 
   async disconnect(): Promise<void> {
@@ -313,11 +401,17 @@ export class HomeAssistantClient implements IHomeAssistantClient {
       this.reconnectTimer = null;
     }
 
+    this.clearPongTimeout();
     this.stopPingInterval();
     this.reconnectAttempts = this.config.maxReconnectAttempts ?? 10; // Prevent reconnection
 
     if (this.ws) {
-      this.ws.close();
+      try {
+        this.ws.removeAllListeners();
+        this.ws.close();
+      } catch {
+        // ignore
+      }
       this.ws = null;
     }
 

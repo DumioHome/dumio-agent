@@ -16,6 +16,8 @@ export interface CloudClientConfig {
   reconnection?: boolean;
   reconnectionAttempts?: number;
   reconnectionDelay?: number;
+  /** Si no hay actividad (mensaje recibido) en este tiempo (ms), se fuerza reconexión. Por defecto 45s. */
+  activityTimeoutMs?: number;
 }
 
 /**
@@ -28,6 +30,9 @@ export class CloudClient implements ICloudClient {
     (state: CloudConnectionState) => void
   > = [];
   private healthInterval: NodeJS.Timeout | null = null;
+  /** Timeout de actividad: si no llega ningún mensaje en N ms, se fuerza reconexión (evita conexiones zombie). */
+  private activityCheckInterval: NodeJS.Timeout | null = null;
+  private lastActivityAt = 0;
 
   // Smart health reporting - only send when changes detected
   private lastHealthData: AgentHealthData | null = null;
@@ -104,6 +109,8 @@ export class CloudClient implements ICloudClient {
         });
 
         this.socket.on("connect", () => {
+          this.touchActivity();
+          this.startActivityCheck();
           this.logger.info("Connected to cloud", {
             socketId: this.socket?.id,
             agentId: this.config.agentId,
@@ -114,6 +121,7 @@ export class CloudClient implements ICloudClient {
 
         this.socket.on("disconnect", (reason) => {
           this.logger.warn("Disconnected from cloud", { reason });
+          this.stopActivityCheck();
           this.setConnectionState("disconnected");
         });
 
@@ -126,6 +134,8 @@ export class CloudClient implements ICloudClient {
         });
 
         this.socket.on("reconnect", (attemptNumber) => {
+          this.touchActivity();
+          this.startActivityCheck();
           this.logger.info("Reconnected to cloud", { attemptNumber });
           this.setConnectionState("connected");
         });
@@ -142,6 +152,11 @@ export class CloudClient implements ICloudClient {
           this.setConnectionState("error");
         });
 
+        // Cualquier mensaje recibido cuenta como actividad (evita timeout en conexiones zombie)
+        this.socket.onAny(() => {
+          this.touchActivity();
+        });
+
         // Handle incoming events from cloud
         this.setupCloudEventHandlers();
       } catch (error) {
@@ -151,13 +166,68 @@ export class CloudClient implements ICloudClient {
     });
   }
 
+  private touchActivity(): void {
+    this.lastActivityAt = Date.now();
+  }
+
+  private startActivityCheck(): void {
+    this.stopActivityCheck();
+    const timeoutMs = this.config.activityTimeoutMs ?? 45000;
+    const checkIntervalMs = Math.min(5000, Math.floor(timeoutMs / 3));
+    this.activityCheckInterval = setInterval(() => {
+      if (!this.socket?.connected) return;
+      const elapsed = Date.now() - this.lastActivityAt;
+      if (elapsed >= timeoutMs) {
+        this.logger.warn("heartbeat timeout → reconnecting", {
+          elapsed,
+          timeoutMs,
+        });
+        this.forceReconnect().catch((err) =>
+          this.logger.error("Force reconnect after activity timeout failed", {
+            err,
+          })
+        );
+      }
+    }, checkIntervalMs);
+  }
+
+  private stopActivityCheck(): void {
+    if (this.activityCheckInterval) {
+      clearInterval(this.activityCheckInterval);
+      this.activityCheckInterval = null;
+    }
+  }
+
+  /**
+   * Cierra el socket actual y abre uno nuevo (reconexión explícita).
+   * Usado ante timeout de actividad o errores; no depende de la app para reparar.
+   */
+  async forceReconnect(): Promise<void> {
+    this.stopActivityCheck();
+    if (!this.socket) return;
+
+    this.logger.info("Force reconnect: closing current socket and reopening");
+    const s = this.socket;
+    this.socket = null;
+    try {
+      s.removeAllListeners();
+      s.disconnect();
+    } catch {
+      // ignore
+    }
+    this.setConnectionState("disconnected");
+    await this.connect();
+  }
+
   async disconnect(): Promise<void> {
+    this.stopActivityCheck();
     if (this.healthInterval) {
       clearInterval(this.healthInterval);
       this.healthInterval = null;
     }
 
     if (this.socket) {
+      this.socket.removeAllListeners();
       this.socket.disconnect();
       this.socket = null;
       this.setConnectionState("disconnected");
