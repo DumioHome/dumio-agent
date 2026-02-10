@@ -5,6 +5,12 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [1.1.0] - 2026-02-10
+
+### Agregado
+
+- Se agrego modificacion del friendly name al device por cloud
+
 ## [1.0.2] - 2026-02-06
 
 ### Agregado

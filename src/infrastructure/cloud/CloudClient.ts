@@ -444,6 +444,20 @@ export class CloudClient implements ICloudClient {
       }
     );
 
+    // Handle device updated event from cloud
+    this.socket.on(
+      "device:updated",
+      (data: CloudEventMap["device:updated"]) => {
+        this.logger.debug("Device updated received from cloud", {
+          id: data.id,
+          deviceId: data.deviceId,
+          name: data.name,
+          deviceCategoryId: data.deviceCategoryId,
+        });
+        // This will be handled by the registered handler in the application layer
+      }
+    );
+
     // Handle any custom events
     this.socket.onAny((event, ...args) => {
       this.logger.trace("Cloud event received", { event, args });
