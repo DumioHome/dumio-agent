@@ -207,7 +207,8 @@ export const EXCLUDED_DOMAINS = [
 ] as const;
 
 /**
- * Domains that are typically physical/real devices
+ * Domains that are typically physical/real devices.
+ * Includes dumio_plug for official Dumio devices (entity_id dumio_plug.*).
  */
 export const PHYSICAL_DEVICE_DOMAINS = [
   'light',
@@ -227,4 +228,5 @@ export const PHYSICAL_DEVICE_DOMAINS = [
   'remote',
   'siren',
   'valve',
+  'dumio_plug',
 ] as const;
