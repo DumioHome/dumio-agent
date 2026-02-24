@@ -22,11 +22,13 @@ import {
   ProcessConversation,
   SubscribeToEvents,
   GetDevices,
+  GetCloudDevices,
   GetRooms,
   SyncDevicesToCloud,
   CapabilitySyncManager,
 } from "../application/index.js";
 import type {
+  CloudDevice,
   DeviceControlCommand,
   DeviceControlResponse,
 } from "../domain/entities/CloudDevice.js";
@@ -60,6 +62,7 @@ export class Agent {
   private processConversationUseCase: ProcessConversation;
   private subscribeToEventsUseCase: SubscribeToEvents;
   private getDevicesUseCase: GetDevices;
+  private getCloudDevicesUseCase: GetCloudDevices;
   private getRoomsUseCase: GetRooms;
   private eventSubscription?: { unsubscribe: () => Promise<void> };
   private capabilitySyncManager?: CapabilitySyncManager;
@@ -78,6 +81,7 @@ export class Agent {
     this.processConversationUseCase = new ProcessConversation(haClient, logger);
     this.subscribeToEventsUseCase = new SubscribeToEvents(haClient, logger);
     this.getDevicesUseCase = new GetDevices(haClient, logger);
+    this.getCloudDevicesUseCase = new GetCloudDevices(haClient, logger);
     this.getRoomsUseCase = new GetRooms(haClient, logger);
 
     this.logger.info("Agent initialized", { name: config.name });
@@ -299,6 +303,15 @@ export class Agent {
   async getDevices(filter?: DeviceFilter): Promise<DeviceSummary[]> {
     const result = await this.getDevicesUseCase.execute({ filter });
     return result.devices as DeviceSummary[];
+  }
+
+  /**
+   * Get devices in CloudDevice format, same filter as devices:sync (only official Dumio).
+   * Use for GET /api/devices to see exactly what is sent to cloud.
+   */
+  async getCloudDevices(): Promise<CloudDevice[]> {
+    const result = await this.getCloudDevicesUseCase.execute();
+    return result.devices;
   }
 
   /**
