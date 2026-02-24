@@ -56,12 +56,10 @@ export interface HAAreaInfo {
 export class DeviceMapper {
   /**
    * Map entity domain to device type.
-   * For official Dumio domain (dumio_plug), infers type from entity name suffix or device_class.
    */
   static mapDomainToType(
     domain: string,
-    attributes: Record<string, unknown>,
-    entityId?: string
+    attributes: Record<string, unknown>
   ): DeviceType {
     const deviceClass = attributes.device_class as string | undefined;
 
@@ -81,17 +79,6 @@ export class DeviceMapper {
       if (classMap[deviceClass]) {
         return classMap[deviceClass];
       }
-    }
-
-    // Official Dumio devices: domain dumio_plug — infer type from entity name suffix
-    if (domain === 'dumio_plug' && entityId) {
-      const name = entityId.split('.')[1]?.toLowerCase() ?? '';
-      if (name.includes('light')) return 'light';
-      if (name.includes('switch')) return 'switch';
-      if (name.includes('temperature')) return 'temperature';
-      if (name.includes('humidity')) return 'humidity';
-      if (name.includes('sensor')) return 'sensor';
-      if (name.includes('plug')) return 'switch';
     }
 
     // Map by domain
@@ -375,7 +362,7 @@ export class DeviceMapper {
     areaInfo?: HAAreaInfo
   ): Device {
     const [domain] = entity.entity_id.split('.');
-    const type = this.mapDomainToType(domain, entity.attributes, entity.entity_id);
+    const type = this.mapDomainToType(domain, entity.attributes);
     const now = new Date();
 
     const status: DeviceStatus = {

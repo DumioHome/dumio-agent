@@ -14,7 +14,10 @@ import type {
 } from "../../domain/entities/CloudDevice.js";
 import { GetDevices } from "./GetDevices.js";
 
-/** Entity ID prefix for official Dumio devices (e.g. dumio_plug.xxx). Only these are sent to cloud. */
+/**
+ * Prefijo en la parte de nombre del entity_id para dispositivos oficiales Dumio.
+ * Formato esperado: domain.dumio_plug_xxxx (por ejemplo: switch.dumio_plug_abc123).
+ */
 export const DUMIO_OFFICIAL_ENTITY_PREFIX = "dumio_plug";
 
 export interface SyncDevicesToCloudInput {
@@ -62,10 +65,13 @@ export class SyncDevicesToCloud {
 
       const allDevices = devicesResult.devices as Device[];
 
-      // Only sync official Dumio devices: entity_id must start with dumio_plug (e.g. dumio_plug.xxx)
-      const haDevices = allDevices.filter((d) =>
-        d.entityId.startsWith(DUMIO_OFFICIAL_ENTITY_PREFIX)
-      );
+      // Solo sincronizamos dispositivos oficiales Dumio:
+      // la parte de nombre del entity_id (después del ".") debe empezar por dumio_plug
+      const haDevices = allDevices.filter((d) => {
+        const [, name] = d.entityId.split(".");
+        return typeof name === "string" &&
+          name.startsWith(DUMIO_OFFICIAL_ENTITY_PREFIX);
+      });
 
       this.logger.debug("Fetched entities from Home Assistant", {
         entityCount: allDevices.length,
