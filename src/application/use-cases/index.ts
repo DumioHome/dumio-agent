@@ -6,6 +6,8 @@ export * from "./SubscribeToEvents.js";
 export * from "./GetDevices.js";
 export * from "./GetRooms.js";
 export * from "./SyncDevicesToCloud.js";
+export * from "./DeviceToCloudTransformer.js";
+export * from "./GetCloudDevices.js";
 export * from "./DeviceStateWatcher.js";
 export * from "./DeviceController.js";
 export * from "./CapabilitySyncManager.js";

@@ -315,9 +315,16 @@ export class HttpServer {
     }
   }
 
-  private async handleGetDevices(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const filter = this.parseDeviceFilter(url);
-    const devices = await this.agent.getDevices(filter);
+  /**
+   * GET /api/devices — same format and filter as devices:sync (CloudDevice[], only official Dumio).
+   * Use to see exactly what information is sent to the cloud.
+   */
+  private async handleGetDevices(
+    _req: IncomingMessage,
+    res: ServerResponse,
+    _url?: URL
+  ): Promise<void> {
+    const devices = await this.agent.getCloudDevices();
     this.sendJson(res, 200, { devices, count: devices.length });
   }
 
