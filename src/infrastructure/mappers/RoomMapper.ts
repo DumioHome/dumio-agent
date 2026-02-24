@@ -1,5 +1,5 @@
 import type { Room, RoomType, RoomSummary, Floor, HomeOverview } from '../../domain/entities/Room.js';
-import type { Device, DeviceSummary } from '../../domain/entities/Device.js';
+import type { Device } from '../../domain/entities/Device.js';
 import type { HAAreaInfo } from './DeviceMapper.js';
 
 /**

@@ -1,7 +1,8 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import type { Agent } from './Agent.js';
 import type { ILogger } from '../domain/ports/ILogger.js';
-import type { DeviceFilter } from '../domain/entities/Device.js';
+import type { DeviceFilter, DeviceType } from '../domain/entities/Device.js';
+import type { CloudCapabilityType } from '../domain/entities/CloudDevice.js';
 import type { ConnectionState } from '../domain/ports/IHomeAssistantClient.js';
 
 export interface HttpServerConfig {
@@ -502,7 +503,7 @@ export class HttpServer {
       const result = await this.agent.controlDevice({
         deviceId: body.deviceId ?? body.entityId!,
         entityId: body.entityId,
-        capabilityType: body.capabilityType as any,
+        capabilityType: body.capabilityType as CloudCapabilityType,
         value: body.value,
       });
 
@@ -537,7 +538,7 @@ export class HttpServer {
     const filter: DeviceFilter = {};
 
     if (roomId) filter.roomId = roomId;
-    if (type) filter.type = type as any;
+    if (type) filter.type = type as DeviceType;
     if (isOnline !== null) filter.isOnline = isOnline === 'true';
     if (isOn !== null) filter.isOn = isOn === 'true';
     if (search) filter.search = search;
@@ -563,9 +564,9 @@ export class HttpServer {
       req.on('end', () => {
         try {
           resolve(body ? JSON.parse(body) : {});
-        } catch (error) {
-          reject(new Error('Invalid JSON body'));
-        }
+      } catch {
+        reject(new Error('Invalid JSON body'));
+      }
       });
       req.on('error', reject);
     });

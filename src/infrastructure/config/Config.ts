@@ -41,7 +41,7 @@ function isHomeAssistantAddon(): boolean {
 /**
  * Load add-on options from Home Assistant Supervisor
  */
-function loadAddonOptions(): Record<string, unknown> {
+function _loadAddonOptions(): Record<string, unknown> {
   const optionsPath = "/data/options.json";
   if (existsSync(optionsPath)) {
     try {

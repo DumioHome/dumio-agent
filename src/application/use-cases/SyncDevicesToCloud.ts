@@ -4,15 +4,11 @@ import type { ILogger } from "../../domain/ports/ILogger.js";
 import type {
   Device,
   DeviceType,
-  DeviceAttributes,
 } from "../../domain/entities/Device.js";
 import type {
   CloudDevice,
   CloudCapability,
   CloudCapabilityType,
-  CloudValueType,
-  CloudCapabilityMeta,
-  CloudCapabilityValue,
   DevicesSyncCallbackResponse,
   SyncedDeviceInfo,
 } from "../../domain/entities/CloudDevice.js";

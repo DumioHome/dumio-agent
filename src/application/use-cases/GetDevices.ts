@@ -1,7 +1,7 @@
 import type { IHomeAssistantClient } from '../../domain/ports/IHomeAssistantClient.js';
 import type { ILogger } from '../../domain/ports/ILogger.js';
 import type { Device, DeviceFilter, DeviceSummary } from '../../domain/entities/Device.js';
-import { EXCLUDED_DOMAINS, PHYSICAL_DEVICE_DOMAINS, ALLOWED_IOT_INTEGRATIONS } from '../../domain/entities/Device.js';
+import { EXCLUDED_DOMAINS, PHYSICAL_DEVICE_DOMAINS, VIRTUAL_DEVICE_INTEGRATIONS } from '../../domain/entities/Device.js';
 import { DeviceMapper, type HADeviceInfo, type HAAreaInfo } from '../../infrastructure/mappers/DeviceMapper.js';
 import type { EntityState } from '../../domain/entities/Entity.js';
 
@@ -27,8 +27,9 @@ interface EntityRegistryEntry {
 }
 
 /**
- * Use case for getting mapped devices from Home Assistant
- * By default, only returns devices from allowed IoT integrations (Tuya, Zigbee, etc.)
+ * Use case for getting mapped devices from Home Assistant (WebSocket device registry).
+ * By default, only returns real physical devices: must have identifiers, manufacturer or model,
+ * and must not be virtual (helpers, scripts, zones, updates).
  */
 export class GetDevices {
   constructor(
@@ -48,23 +49,21 @@ export class GetDevices {
         this.fetchEntityRegistry(),
       ]);
 
-      // Build lookup maps - ONLY include devices from allowed integrations
+      // Build lookup maps - only include real physical devices (identifiers + manufacturer|model, not virtual)
       const devicesMap = new Map<string, HADeviceInfo>();
       const deviceIntegrations = new Map<string, string>(); // device_id -> integration
       
       for (const device of deviceRegistry) {
-        // Skip disabled devices
         if (device.disabled_by) continue;
 
-        // Extract integration from device
         const integration = this.extractDeviceIntegration(device);
-        
-        // Only include devices from allowed IoT integrations (unless includeAll)
-        if (input.filter?.includeAll || this.isAllowedIntegration(integration)) {
+        if (integration) {
+          deviceIntegrations.set(device.id, integration);
+        }
+
+        // Unless includeAll, only include real devices: identifiers, manufacturer or model, not virtual
+        if (input.filter?.includeAll || this.isRealDevice(device, integration)) {
           devicesMap.set(device.id, device);
-          if (integration) {
-            deviceIntegrations.set(device.id, integration);
-          }
         }
       }
 
@@ -78,7 +77,7 @@ export class GetDevices {
         entityRegMap.set(entry.entity_id, entry);
       }
 
-      // Default filter: only physical devices from allowed integrations
+      // Default filter: only physical devices (real-device filter already applied to devicesMap)
       const filter: DeviceFilter = {
         onlyPhysical: true,
         ...input.filter,
@@ -144,7 +143,7 @@ export class GetDevices {
       const registryEntry = entityRegistry.get(state.entity_id);
 
       // Exclude system/virtual domains
-      if (EXCLUDED_DOMAINS.includes(domain as any)) {
+      if (EXCLUDED_DOMAINS.includes(domain as (typeof EXCLUDED_DOMAINS)[number])) {
         return false;
       }
 
@@ -176,7 +175,7 @@ export class GetDevices {
       }
 
       // Only include known physical device domains
-      if (!PHYSICAL_DEVICE_DOMAINS.includes(domain as any)) {
+      if (!PHYSICAL_DEVICE_DOMAINS.includes(domain as (typeof PHYSICAL_DEVICE_DOMAINS)[number])) {
         return false;
       }
 
@@ -291,6 +290,30 @@ export class GetDevices {
   }
 
   /**
+   * Returns true if the device is a real physical device to sync (not virtual).
+   * Rules: must have identifiers; must have manufacturer or model; must not be helper/script/zone/update.
+   */
+  private isRealDevice(device: HADeviceInfo, integration: string | null): boolean {
+    // Must have at least one identifier
+    if (!device.identifiers?.length) {
+      return false;
+    }
+    const hasManufacturer = typeof device.manufacturer === 'string' && device.manufacturer.trim().length > 0;
+    const hasModel = typeof device.model === 'string' && device.model.trim().length > 0;
+    if (!hasManufacturer && !hasModel) {
+      return false;
+    }
+    // Exclude virtual devices (helpers, scripts, zones, updates)
+    if (device.entry_type === 'service') {
+      return false;
+    }
+    if (integration && VIRTUAL_DEVICE_INTEGRATIONS.includes(integration as (typeof VIRTUAL_DEVICE_INTEGRATIONS)[number])) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Extract integration name from device info
    */
   private extractDeviceIntegration(device: HADeviceInfo): string | null {
@@ -319,22 +342,4 @@ export class GetDevices {
     return null;
   }
 
-  /**
-   * Check if integration is in the allowed list
-   */
-  private isAllowedIntegration(integration: string | null): boolean {
-    if (!integration) return false;
-    
-    const integrationLower = integration.toLowerCase();
-    
-    // Check exact match
-    if (ALLOWED_IOT_INTEGRATIONS.includes(integrationLower as any)) {
-      return true;
-    }
-    
-    // Check partial match (e.g., "tuya_v2" should match "tuya")
-    return ALLOWED_IOT_INTEGRATIONS.some((allowed) => 
-      integrationLower.includes(allowed) || allowed.includes(integrationLower)
-    );
-  }
 }

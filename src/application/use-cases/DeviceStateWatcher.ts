@@ -460,7 +460,7 @@ export class DeviceStateWatcher {
         }
         return null;
 
-      case "temperature":
+      case "temperature": {
         const temp =
           attrs.temperature ??
           attrs.current_temperature ??
@@ -469,43 +469,49 @@ export class DeviceStateWatcher {
           return { value: temp as number };
         }
         return null;
+      }
 
-      case "humidity":
+      case "humidity": {
         const humidity =
           attrs.humidity ?? attrs.current_humidity ?? parseFloat(stateValue);
         if (!isNaN(humidity as number)) {
           return { value: humidity as number };
         }
         return null;
+      }
 
-      case "battery":
+      case "battery": {
         const battery =
           attrs.battery_level ?? attrs.battery ?? parseFloat(stateValue);
         if (!isNaN(battery as number)) {
           return { value: battery as number };
         }
         return null;
+      }
 
-      case "power":
+      case "power": {
         const power = attrs.power ?? parseFloat(stateValue);
         if (!isNaN(power as number)) {
           return { value: power as number };
         }
         return null;
+      }
 
-      case "energy":
+      case "energy": {
         const energy = attrs.energy ?? parseFloat(stateValue);
         if (!isNaN(energy as number)) {
           return { value: energy as number };
         }
         return null;
+      }
 
-      case "position":
+      case "position": {
         const position = attrs.current_position ?? parseFloat(stateValue);
         if (!isNaN(position as number)) {
           return { value: position as number };
         }
         return null;
+      }
 
       case "volume":
         if (attrs.volume_level !== undefined) {
@@ -530,13 +536,14 @@ export class DeviceStateWatcher {
       case "lock":
         return { on: stateValue === "locked" };
 
-      case "sensor":
+      case "sensor": {
         // Generic sensor - try to parse as number
         const numValue = parseFloat(stateValue);
         if (!isNaN(numValue)) {
           return { value: numValue };
         }
         return { value: stateValue };
+      }
 
       default:
         return null;

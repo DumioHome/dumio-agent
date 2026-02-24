@@ -140,69 +140,30 @@ export interface DeviceFilter {
 }
 
 /**
- * Allowed IoT integrations - ONLY these will be returned by default
- * Add or remove integrations based on what you actually use
+ * Integrations that represent virtual/system entities, not physical devices.
+ * Devices from these are excluded from sync (helpers, scripts, zones, updates).
+ */
+export const VIRTUAL_DEVICE_INTEGRATIONS = [
+  'update',   // HA update entities (e.g. "Home Assistant Core" update)
+  'script',   // Script "devices" if any
+  'zone',     // Zone "devices" if any
+  'helper',   // Generic helpers
+] as const;
+
+export type VirtualDeviceIntegration = typeof VIRTUAL_DEVICE_INTEGRATIONS[number];
+
+/**
+ * @deprecated Use real-device filter (identifiers + manufacturer|model + not virtual) instead.
+ * Kept for optional filter by integration in GetDevices (filter.integration / filter.integrations).
  */
 export const ALLOWED_IOT_INTEGRATIONS = [
-  // Smart Home Platforms
-  'tuya',
-  'smart_life',
-  'smartlife',
-  
-  // Zigbee
-  'zha',
-  'zigbee2mqtt',
-  'deconz',
-  
-  // Z-Wave
-  'zwave',
-  'zwave_js',
-  
-  // WiFi devices
-  'xiaomi_miio',
-  'yeelight',
-  'tplink',
-  'tapo',
-  'shelly',
-  'esphome',
-  'tasmota',
-  'sonoff',
-  'wled',
-  'wiz',
-  'lifx',
-  
-  // Major brands
-  'hue',
-  'ikea',
-  'nanoleaf',
-  'govee',
-  
-  // Generic protocols
-  'mqtt',
-  'modbus',
-  
-  // Cameras & Security
-  'ring',
-  'nest',
-  'eufy',
-  'reolink',
-  'hikvision',
-  
-  // Climate
-  'sensibo',
-  'tado',
-  'ecobee',
-  'honeywell',
-  
-  // Media
-  'cast',
-  'google_cast',
-  'sonos',
-  'spotify',
-  'samsung_tv',
-  'lg_tv',
-  'roku',
-  'apple_tv',
+  'tuya', 'smart_life', 'smartlife', 'zha', 'zigbee2mqtt', 'deconz',
+  'zwave', 'zwave_js', 'xiaomi_miio', 'yeelight', 'tplink', 'tapo',
+  'shelly', 'esphome', 'tasmota', 'sonoff', 'wled', 'wiz', 'lifx',
+  'hue', 'ikea', 'nanoleaf', 'govee', 'mqtt', 'modbus',
+  'ring', 'nest', 'eufy', 'reolink', 'hikvision',
+  'sensibo', 'tado', 'ecobee', 'honeywell',
+  'cast', 'google_cast', 'sonos', 'spotify', 'samsung_tv', 'lg_tv', 'roku', 'apple_tv',
 ] as const;
 
 export type AllowedIntegration = typeof ALLOWED_IOT_INTEGRATIONS[number];
