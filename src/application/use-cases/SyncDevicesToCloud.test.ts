@@ -4,7 +4,7 @@ import type { IHomeAssistantClient } from '../../domain/ports/IHomeAssistantClie
 import type { ICloudClient } from '../../domain/ports/ICloudClient.js';
 import type { ILogger } from '../../domain/ports/ILogger.js';
 import type { EntityState } from '../../domain/entities/Entity.js';
-import type { DevicesSyncCallbackResponse } from '../../domain/entities/CloudDevice.js';
+import type { DevicesSyncCallbackResponse, CloudDevice, CloudCapability } from '../../domain/entities/CloudDevice.js';
 
 describe('SyncDevicesToCloud', () => {
   let mockHaClient: IHomeAssistantClient;
@@ -211,8 +211,8 @@ describe('SyncDevicesToCloud', () => {
     
     // Find both sensors - they should have the same deviceId (device3) 
     // because they belong to the same physical device
-    const tempSensor = payload.devices.find((d: any) => d.entityIds.includes('sensor.temperature'));
-    const humiditySensor = payload.devices.find((d: any) => d.entityIds.includes('sensor.humidity'));
+    const tempSensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('sensor.temperature'));
+    const humiditySensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('sensor.humidity'));
 
     expect(tempSensor).toBeDefined();
     expect(humiditySensor).toBeDefined();
@@ -233,8 +233,8 @@ describe('SyncDevicesToCloud', () => {
     const payload = emitCall[1];
     
     // Both sensors are separate CloudDevices
-    const tempSensor = payload.devices.find((d: any) => d.entityIds.includes('sensor.temperature'));
-    const humiditySensor = payload.devices.find((d: any) => d.entityIds.includes('sensor.humidity'));
+    const tempSensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('sensor.temperature'));
+    const humiditySensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('sensor.humidity'));
 
     // Temperature sensor
     expect(tempSensor.deviceType).toBe('temperature');
@@ -252,7 +252,7 @@ describe('SyncDevicesToCloud', () => {
 
     const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
     const payload = emitCall[1];
-    const lightDevice = payload.devices.find((d: any) => d.entityIds.includes('light.living_room'));
+    const lightDevice = payload.devices.find((d: CloudDevice) => d.entityIds.includes('light.living_room'));
 
     expect(lightDevice).toBeDefined();
     expect(lightDevice.deviceId).toBe('device1');
@@ -265,11 +265,11 @@ describe('SyncDevicesToCloud', () => {
     expect(lightDevice.integration).toBe('tuya');
 
     // Check capabilities
-    const switchCap = lightDevice.capabilities.find((c: any) => c.capabilityType === 'switch');
+    const switchCap = lightDevice.capabilities.find((c: CloudCapability) => c.capabilityType === 'switch');
     expect(switchCap).toBeDefined();
     expect(switchCap.currentValue.on).toBe(true);
 
-    const brightnessCap = lightDevice.capabilities.find((c: any) => c.capabilityType === 'brightness');
+    const brightnessCap = lightDevice.capabilities.find((c: CloudCapability) => c.capabilityType === 'brightness');
     expect(brightnessCap).toBeDefined();
     expect(brightnessCap.currentValue.value).toBe(75);
   });
@@ -279,7 +279,7 @@ describe('SyncDevicesToCloud', () => {
 
     const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
     const payload = emitCall[1];
-    const switchDevice = payload.devices.find((d: any) => d.entityIds.includes('switch.kitchen'));
+    const switchDevice = payload.devices.find((d: CloudDevice) => d.entityIds.includes('switch.kitchen'));
 
     expect(switchDevice).toBeDefined();
     expect(switchDevice.deviceId).toBe('device2');
@@ -290,7 +290,7 @@ describe('SyncDevicesToCloud', () => {
     expect(switchDevice.model).toBe('Smart Plug');
     expect(switchDevice.entityIds).toEqual(['switch.kitchen']);
 
-    const switchCap = switchDevice.capabilities.find((c: any) => c.capabilityType === 'switch');
+    const switchCap = switchDevice.capabilities.find((c: CloudCapability) => c.capabilityType === 'switch');
     expect(switchCap).toBeDefined();
     expect(switchCap.currentValue.on).toBe(false);
   });

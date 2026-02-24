@@ -175,12 +175,13 @@ export class HomeAssistantClient implements IHomeAssistantClient {
           connectResolve?.();
           break;
 
-        case "auth_invalid":
+        case "auth_invalid": {
           this.setConnectionState("error");
-          const error = new Error(`Authentication failed: ${message.message}`);
-          this.logger.error("Authentication failed", error);
-          connectReject?.(error);
+          const authError = new Error(`Authentication failed: ${message.message}`);
+          this.logger.error("Authentication failed", authError);
+          connectReject?.(authError);
           break;
+        }
 
         case "result":
           this.handleResult(message as HAResultMessage);

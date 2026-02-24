@@ -1,7 +1,6 @@
 import type { IHomeAssistantClient } from '../../domain/ports/IHomeAssistantClient.js';
 import type { ILogger } from '../../domain/ports/ILogger.js';
-import type { Room, RoomSummary, RoomWithDevices, HomeOverview } from '../../domain/entities/Room.js';
-import type { DeviceSummary } from '../../domain/entities/Device.js';
+import type { Room, RoomWithDevices, HomeOverview } from '../../domain/entities/Room.js';
 import { DeviceMapper, type HADeviceInfo, type HAAreaInfo } from '../../infrastructure/mappers/DeviceMapper.js';
 import { RoomMapper, type HAFloorInfo } from '../../infrastructure/mappers/RoomMapper.js';
 

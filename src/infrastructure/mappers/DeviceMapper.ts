@@ -9,7 +9,14 @@ import type {
 } from '../../domain/entities/Device.js';
 
 /**
- * Raw device info from Home Assistant device registry
+ * Home Assistant device entry type.
+ * - null/undefined: device from integration (physical or from config entry)
+ * - 'service': device created from UI (helper) - virtual, not a physical device
+ */
+export type HADeviceEntryType = null | 'service';
+
+/**
+ * Raw device info from Home Assistant device registry (WebSocket config/device_registry/list)
  */
 export interface HADeviceInfo {
   id: string;
@@ -20,8 +27,9 @@ export interface HADeviceInfo {
   sw_version?: string;
   area_id?: string;
   disabled_by?: string;
-  entry_type?: string;
-  /** Identifiers contain [integration, device_id] tuples */
+  /** 'service' = helper/virtual device; null/undefined = from integration */
+  entry_type?: HADeviceEntryType | string;
+  /** Identifiers contain [integration, device_id] tuples. Required for real devices. */
   identifiers?: Array<[string, string]>;
   /** Connections like MAC addresses */
   connections?: Array<[string, string]>;
@@ -154,7 +162,7 @@ export class DeviceMapper {
   /**
    * Map Home Assistant attributes to readable device attributes
    */
-  static mapAttributes(attributes: Record<string, unknown>, type: DeviceType): DeviceAttributes {
+  static mapAttributes(attributes: Record<string, unknown>, _type: DeviceType): DeviceAttributes {
     const mapped: DeviceAttributes = {};
 
     // Brightness (0-255 to 0-100)

@@ -3,6 +3,7 @@ import { GetDevices } from './GetDevices.js';
 import type { IHomeAssistantClient } from '../../domain/ports/IHomeAssistantClient.js';
 import type { ILogger } from '../../domain/ports/ILogger.js';
 import type { EntityState } from '../../domain/entities/Entity.js';
+import type { Device, DeviceSummary } from '../../domain/entities/Device.js';
 
 describe('GetDevices', () => {
   let mockHaClient: IHomeAssistantClient;
@@ -63,10 +64,10 @@ describe('GetDevices', () => {
         if (type === 'config/device_registry/list') {
           return Promise.resolve({
             result: [
-              { id: 'device1', name: 'Living Room Light', area_id: 'living_room', identifiers: [['tuya', 'abc123']] },
-              { id: 'device2', name: 'Bedroom Light', area_id: 'bedroom', identifiers: [['tuya', 'def456']] },
-              { id: 'device3', name: 'Temperature Sensor', area_id: 'living_room', identifiers: [['xiaomi_miio', 'ghi789']] },
-              { id: 'device4', name: 'Fan Switch', area_id: 'bedroom', identifiers: [['shelly', 'jkl012']] },
+              { id: 'device1', name: 'Living Room Light', area_id: 'living_room', identifiers: [['tuya', 'abc123']], manufacturer: 'Tuya', model: 'Bulb' },
+              { id: 'device2', name: 'Bedroom Light', area_id: 'bedroom', identifiers: [['tuya', 'def456']], manufacturer: 'Tuya', model: 'Bulb' },
+              { id: 'device3', name: 'Temperature Sensor', area_id: 'living_room', identifiers: [['xiaomi_miio', 'ghi789']], manufacturer: 'Xiaomi', model: 'TH01' },
+              { id: 'device4', name: 'Fan Switch', area_id: 'bedroom', identifiers: [['shelly', 'jkl012']], manufacturer: 'Shelly', model: '1PM' },
             ],
           });
         }
@@ -143,7 +144,7 @@ describe('GetDevices', () => {
 
   it('should map device type correctly', async () => {
     const result = await useCase.execute({ includeFullDetails: true });
-    const devices = result.devices as any[];
+    const devices = result.devices as Device[];
 
     const light = devices.find((d) => d.entityId === 'light.living_room');
     const sensor = devices.find((d) => d.entityId === 'sensor.temperature');
@@ -154,7 +155,7 @@ describe('GetDevices', () => {
 
   it('should map state display correctly', async () => {
     const result = await useCase.execute({ includeFullDetails: true });
-    const devices = result.devices as any[];
+    const devices = result.devices as Device[];
 
     const lightOn = devices.find((d) => d.entityId === 'light.living_room');
     const lightOff = devices.find((d) => d.entityId === 'light.bedroom');
@@ -197,7 +198,7 @@ describe('GetDevices', () => {
 
   it('should map room name correctly', async () => {
     const result = await useCase.execute({ includeFullDetails: true });
-    const devices = result.devices as any[];
+    const devices = result.devices as Device[];
 
     const livingRoomLight = devices.find((d) => d.entityId === 'light.living_room');
     expect(livingRoomLight.roomName).toBe('Sala de Estar');
@@ -205,7 +206,7 @@ describe('GetDevices', () => {
 
   it('should map brightness to percentage', async () => {
     const result = await useCase.execute({ includeFullDetails: true });
-    const devices = result.devices as any[];
+    const devices = result.devices as Device[];
 
     const light = devices.find((d) => d.entityId === 'light.living_room');
     expect(light.status.attributes.brightness).toBe(100); // 255 -> 100%
@@ -213,7 +214,7 @@ describe('GetDevices', () => {
 
   it('should return summaries by default', async () => {
     const result = await useCase.execute();
-    const device = result.devices[0] as any;
+    const device = result.devices[0] as DeviceSummary | Device;
 
     // Summary should have limited fields
     expect(device).toHaveProperty('id');
@@ -225,10 +226,95 @@ describe('GetDevices', () => {
 
   it('should return full details when requested', async () => {
     const result = await useCase.execute({ includeFullDetails: true });
-    const device = result.devices[0] as any;
+    const device = result.devices[0] as DeviceSummary | Device;
 
     // Full device should have capabilities
     expect(device).toHaveProperty('capabilities');
     expect(device).toHaveProperty('manufacturer');
+  });
+
+  it('should exclude devices without identifiers', async () => {
+    mockHaClient.sendCommand = vi.fn().mockImplementation(({ type }) => {
+      if (type === 'config/device_registry/list') {
+        return Promise.resolve({
+          result: [
+            { id: 'real1', name: 'Real', area_id: 'living_room', identifiers: [['zha', 'abc']], manufacturer: 'X', model: 'Y' },
+            { id: 'noId', name: 'No Identifiers', area_id: 'living_room', identifiers: [], manufacturer: 'X', model: 'Y' },
+          ],
+        });
+      }
+      if (type === 'config/area_registry/list') return Promise.resolve({ result: [{ area_id: 'living_room', name: 'Sala' }] });
+      if (type === 'config/entity_registry/list') return Promise.resolve({ result: [{ entity_id: 'light.real', device_id: 'real1', area_id: 'living_room' }] });
+      return Promise.resolve({ result: [] });
+    });
+    mockHaClient.getStates = vi.fn().mockResolvedValue([
+      { entity_id: 'light.real', state: 'on', attributes: { friendly_name: 'Real' }, last_changed: '', last_updated: '', context: { id: '', parent_id: null, user_id: null } },
+    ]);
+    const result = await useCase.execute({ includeFullDetails: true });
+    expect(result.count).toBe(1);
+    expect((result.devices as Device[]).every((d) => d.id !== 'noId')).toBe(true);
+  });
+
+  it('should exclude devices without manufacturer and model', async () => {
+    mockHaClient.sendCommand = vi.fn().mockImplementation(({ type }) => {
+      if (type === 'config/device_registry/list') {
+        return Promise.resolve({
+          result: [
+            { id: 'real1', name: 'Real', area_id: 'living_room', identifiers: [['zha', 'abc']], manufacturer: 'X', model: 'Y' },
+            { id: 'noMfr', name: 'No Mfr/Model', area_id: 'living_room', identifiers: [['mqtt', 'xyz']] },
+          ],
+        });
+      }
+      if (type === 'config/area_registry/list') return Promise.resolve({ result: [{ area_id: 'living_room', name: 'Sala' }] });
+      if (type === 'config/entity_registry/list') return Promise.resolve({ result: [{ entity_id: 'light.real', device_id: 'real1', area_id: 'living_room' }] });
+      return Promise.resolve({ result: [] });
+    });
+    mockHaClient.getStates = vi.fn().mockResolvedValue([
+      { entity_id: 'light.real', state: 'on', attributes: { friendly_name: 'Real' }, last_changed: '', last_updated: '', context: { id: '', parent_id: null, user_id: null } },
+    ]);
+    const result = await useCase.execute({ includeFullDetails: true });
+    expect(result.count).toBe(1);
+  });
+
+  it('should exclude virtual devices (entry_type service)', async () => {
+    mockHaClient.sendCommand = vi.fn().mockImplementation(({ type }) => {
+      if (type === 'config/device_registry/list') {
+        return Promise.resolve({
+          result: [
+            { id: 'real1', name: 'Real', area_id: 'living_room', identifiers: [['zha', 'a']], manufacturer: 'X', model: 'Y' },
+            { id: 'helper1', name: 'Helper Device', area_id: null, identifiers: [['helper', 'b']], manufacturer: 'HA', model: 'Helper', entry_type: 'service' },
+          ],
+        });
+      }
+      if (type === 'config/area_registry/list') return Promise.resolve({ result: [{ area_id: 'living_room', name: 'Sala' }] });
+      if (type === 'config/entity_registry/list') return Promise.resolve({ result: [{ entity_id: 'light.real', device_id: 'real1', area_id: 'living_room' }] });
+      return Promise.resolve({ result: [] });
+    });
+    mockHaClient.getStates = vi.fn().mockResolvedValue([
+      { entity_id: 'light.real', state: 'on', attributes: { friendly_name: 'Real' }, last_changed: '', last_updated: '', context: { id: '', parent_id: null, user_id: null } },
+    ]);
+    const result = await useCase.execute({ includeFullDetails: true });
+    expect(result.count).toBe(1);
+  });
+
+  it('should exclude update integration devices', async () => {
+    mockHaClient.sendCommand = vi.fn().mockImplementation(({ type }) => {
+      if (type === 'config/device_registry/list') {
+        return Promise.resolve({
+          result: [
+            { id: 'real1', name: 'Real', area_id: 'living_room', identifiers: [['zha', 'a']], manufacturer: 'X', model: 'Y' },
+            { id: 'upd1', name: 'HA Core Update', area_id: null, identifiers: [['update', 'core']], manufacturer: 'Home Assistant', model: 'Core' },
+          ],
+        });
+      }
+      if (type === 'config/area_registry/list') return Promise.resolve({ result: [{ area_id: 'living_room', name: 'Sala' }] });
+      if (type === 'config/entity_registry/list') return Promise.resolve({ result: [{ entity_id: 'light.real', device_id: 'real1', area_id: 'living_room' }] });
+      return Promise.resolve({ result: [] });
+    });
+    mockHaClient.getStates = vi.fn().mockResolvedValue([
+      { entity_id: 'light.real', state: 'on', attributes: { friendly_name: 'Real' }, last_changed: '', last_updated: '', context: { id: '', parent_id: null, user_id: null } },
+    ]);
+    const result = await useCase.execute({ includeFullDetails: true });
+    expect(result.count).toBe(1);
   });
 });

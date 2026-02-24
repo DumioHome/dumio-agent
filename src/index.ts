@@ -426,9 +426,35 @@ async function main(): Promise<void> {
   process.on("SIGTERM", shutdown);
 
   try {
-    // Start the agent
-    await agent.start(handlers);
-
+    // Start the agent with retries (HA may be unreachable at first boot)
+    const maxAttempts = config.reconnection.maxAttempts;
+    const reconnectDelayMs = config.reconnection.interval;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await agent.start(handlers);
+        break;
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        const code = (err as NodeJS.ErrnoException & { code?: string }).code;
+        if (attempt === maxAttempts) {
+          logger.fatal("Failed to start agent after max connection attempts", {
+            attempt,
+            maxAttempts,
+            code: code ?? undefined,
+            err,
+          });
+          process.exit(1);
+        }
+        logger.warn("Failed to connect to Home Assistant, retrying...", {
+          attempt,
+          maxAttempts,
+          delaySeconds: Math.round(reconnectDelayMs / 1000),
+          code: code ?? undefined,
+          message: err.message,
+        });
+        await new Promise((resolve) => setTimeout(resolve, reconnectDelayMs));
+      }
+    }
     // Start HTTP API server
     await httpServer.start();
 

@@ -3,6 +3,7 @@ import { GetRooms } from './GetRooms.js';
 import type { IHomeAssistantClient } from '../../domain/ports/IHomeAssistantClient.js';
 import type { ILogger } from '../../domain/ports/ILogger.js';
 import type { EntityState } from '../../domain/entities/Entity.js';
+import type { Room, RoomWithDevices } from '../../domain/entities/Room.js';
 
 describe('GetRooms', () => {
   let mockHaClient: IHomeAssistantClient;
@@ -114,7 +115,7 @@ describe('GetRooms', () => {
 
   it('should map room names correctly', async () => {
     const result = await useCase.execute();
-    const rooms = result.rooms as any[];
+    const rooms = result.rooms as Room[];
 
     const livingRoom = rooms.find((r) => r.id === 'living_room');
     expect(livingRoom.name).toBe('Sala de Estar');
@@ -122,7 +123,7 @@ describe('GetRooms', () => {
 
   it('should infer room type from name', async () => {
     const result = await useCase.execute();
-    const rooms = result.rooms as any[];
+    const rooms = result.rooms as Room[];
 
     const bedroom = rooms.find((r) => r.id === 'bedroom');
     const kitchen = rooms.find((r) => r.id === 'kitchen');
@@ -133,7 +134,7 @@ describe('GetRooms', () => {
 
   it('should count devices per room', async () => {
     const result = await useCase.execute();
-    const rooms = result.rooms as any[];
+    const rooms = result.rooms as Room[];
 
     const livingRoom = rooms.find((r) => r.id === 'living_room');
     const bedroom = rooms.find((r) => r.id === 'bedroom');
@@ -144,7 +145,7 @@ describe('GetRooms', () => {
 
   it('should count devices on per room', async () => {
     const result = await useCase.execute();
-    const rooms = result.rooms as any[];
+    const rooms = result.rooms as Room[];
 
     const livingRoom = rooms.find((r) => r.id === 'living_room');
     const bedroom = rooms.find((r) => r.id === 'bedroom');
@@ -155,7 +156,7 @@ describe('GetRooms', () => {
 
   it('should include floor name', async () => {
     const result = await useCase.execute();
-    const rooms = result.rooms as any[];
+    const rooms = result.rooms as Room[];
 
     const livingRoom = rooms.find((r) => r.id === 'living_room');
     expect(livingRoom.floor).toBe('Planta Baja');
@@ -163,7 +164,7 @@ describe('GetRooms', () => {
 
   it('should include devices when requested', async () => {
     const result = await useCase.execute({ includeDevices: true });
-    const roomsWithDevices = result.rooms as any[];
+    const roomsWithDevices = result.rooms as RoomWithDevices[];
 
     const livingRoom = roomsWithDevices.find((r) => r.room.id === 'living_room');
     expect(livingRoom.devices).toHaveLength(2);
@@ -205,12 +206,12 @@ describe('GetRooms', () => {
 
   it('should provide default icon based on room type', async () => {
     const result = await useCase.execute();
-    const rooms = result.rooms as any[];
+    const rooms = result.rooms as Room[];
 
     const bedroom = rooms.find((r) => r.id === 'bedroom');
     const kitchen = rooms.find((r) => r.id === 'kitchen');
 
-    expect(bedroom.icon).toBe('mdi:bed');
-    expect(kitchen.icon).toBe('mdi:stove');
+    expect(bedroom?.icon).toBe('mdi:bed');
+    expect(kitchen?.icon).toBe('mdi:stove');
   });
 });

@@ -336,7 +336,7 @@ describe("CapabilitySyncManager", () => {
       );
 
       // This would normally be called by the connection state handler
-      const result = await manager.restoreSyncStateFromCloud();
+      await manager.restoreSyncStateFromCloud();
 
       // Note: The full restore includes a SyncDevicesToCloud call which we're not fully mocking
       // So we just check that it attempted to fetch devices
