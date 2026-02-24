@@ -26,10 +26,10 @@ describe('SyncDevicesToCloud', () => {
   };
 
   beforeEach(() => {
-    // 4 entities - official Dumio devices (entity_id starts with dumio_plug)
+    // 4 entities - dispositivos oficiales Dumio (entity_id: domain.dumio_plug_xxxx)
     mockStates = [
       {
-        entity_id: 'dumio_plug.living_room_light',
+        entity_id: 'light.dumio_plug_living_room',
         state: 'on',
         attributes: {
           friendly_name: 'Living Room Light',
@@ -42,7 +42,7 @@ describe('SyncDevicesToCloud', () => {
         context: { id: '1', parent_id: null, user_id: null },
       },
       {
-        entity_id: 'dumio_plug.kitchen_switch',
+        entity_id: 'switch.dumio_plug_kitchen',
         state: 'off',
         attributes: { friendly_name: 'Kitchen Switch' },
         last_changed: '2024-01-01T09:00:00Z',
@@ -50,7 +50,7 @@ describe('SyncDevicesToCloud', () => {
         context: { id: '2', parent_id: null, user_id: null },
       },
       {
-        entity_id: 'dumio_plug.temperature',
+        entity_id: 'sensor.dumio_plug_temperature',
         state: '22.5',
         attributes: {
           friendly_name: 'Temperature',
@@ -62,7 +62,7 @@ describe('SyncDevicesToCloud', () => {
         context: { id: '3', parent_id: null, user_id: null },
       },
       {
-        entity_id: 'dumio_plug.humidity',
+        entity_id: 'sensor.dumio_plug_humidity',
         state: '65',
         attributes: {
           friendly_name: 'Humidity',
@@ -123,11 +123,11 @@ describe('SyncDevicesToCloud', () => {
         if (type === 'config/entity_registry/list') {
           return Promise.resolve({
             result: [
-              { entity_id: 'dumio_plug.living_room_light', device_id: 'device1', area_id: 'living_room' },
-              { entity_id: 'dumio_plug.kitchen_switch', device_id: 'device2', area_id: 'kitchen' },
+              { entity_id: 'light.dumio_plug_living_room', device_id: 'device1', area_id: 'living_room' },
+              { entity_id: 'switch.dumio_plug_kitchen', device_id: 'device2', area_id: 'kitchen' },
               // Both sensors belong to the same physical device (device3)
-              { entity_id: 'dumio_plug.temperature', device_id: 'device3', area_id: 'living_room' },
-              { entity_id: 'dumio_plug.humidity', device_id: 'device3', area_id: 'living_room' },
+              { entity_id: 'sensor.dumio_plug_temperature', device_id: 'device3', area_id: 'living_room' },
+              { entity_id: 'sensor.dumio_plug_humidity', device_id: 'device3', area_id: 'living_room' },
             ],
           });
         }
@@ -211,8 +211,8 @@ describe('SyncDevicesToCloud', () => {
     
     // Find both sensors - they should have the same deviceId (device3) 
     // because they belong to the same physical device
-    const tempSensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('dumio_plug.temperature'));
-    const humiditySensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('dumio_plug.humidity'));
+    const tempSensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('sensor.dumio_plug_temperature'));
+    const humiditySensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('sensor.dumio_plug_humidity'));
 
     expect(tempSensor).toBeDefined();
     expect(humiditySensor).toBeDefined();
@@ -222,8 +222,8 @@ describe('SyncDevicesToCloud', () => {
     expect(humiditySensor.deviceId).toBe('device3');
     
     // But different entityIds
-    expect(tempSensor.entityIds).toEqual(['dumio_plug.temperature']);
-    expect(humiditySensor.entityIds).toEqual(['dumio_plug.humidity']);
+    expect(tempSensor.entityIds).toEqual(['sensor.dumio_plug_temperature']);
+    expect(humiditySensor.entityIds).toEqual(['sensor.dumio_plug_humidity']);
   });
 
   it('should create separate CloudDevices for entities from same physical device', async () => {
@@ -233,8 +233,8 @@ describe('SyncDevicesToCloud', () => {
     const payload = emitCall[1];
     
     // Both sensors are separate CloudDevices
-    const tempSensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('dumio_plug.temperature'));
-    const humiditySensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('dumio_plug.humidity'));
+    const tempSensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('sensor.dumio_plug_temperature'));
+    const humiditySensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('sensor.dumio_plug_humidity'));
 
     // Temperature sensor
     expect(tempSensor.deviceType).toBe('temperature');
@@ -252,7 +252,7 @@ describe('SyncDevicesToCloud', () => {
 
     const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
     const payload = emitCall[1];
-    const lightDevice = payload.devices.find((d: CloudDevice) => d.entityIds.includes('dumio_plug.living_room_light'));
+    const lightDevice = payload.devices.find((d: CloudDevice) => d.entityIds.includes('light.dumio_plug_living_room'));
 
     expect(lightDevice).toBeDefined();
     expect(lightDevice.deviceId).toBe('device1');
@@ -279,7 +279,7 @@ describe('SyncDevicesToCloud', () => {
 
     const emitCall = vi.mocked(mockCloudClient.emitWithCallback).mock.calls[0];
     const payload = emitCall[1];
-    const switchDevice = payload.devices.find((d: CloudDevice) => d.entityIds.includes('dumio_plug.kitchen_switch'));
+    const switchDevice = payload.devices.find((d: CloudDevice) => d.entityIds.includes('switch.dumio_plug_kitchen'));
 
     expect(switchDevice).toBeDefined();
     expect(switchDevice.deviceId).toBe('device2');
@@ -288,14 +288,14 @@ describe('SyncDevicesToCloud', () => {
     expect(switchDevice.name).toBeUndefined();
     expect(switchDevice.manufacturer).toBe('TP-Link');
     expect(switchDevice.model).toBe('Smart Plug');
-    expect(switchDevice.entityIds).toEqual(['dumio_plug.kitchen_switch']);
+    expect(switchDevice.entityIds).toEqual(['switch.dumio_plug_kitchen']);
 
     const switchCap = switchDevice.capabilities.find((c: CloudCapability) => c.capabilityType === 'switch');
     expect(switchCap).toBeDefined();
     expect(switchCap.currentValue.on).toBe(false);
   });
 
-  it('should only sync devices whose entity_id starts with dumio_plug (official Dumio devices)', async () => {
+  it('should only sync devices whose entity_id name part starts with dumio_plug (official Dumio devices)', async () => {
     // Add a non-official entity to states (e.g. third-party light) - would need mock to return it;
     // here we only assert that the current mock (all dumio_plug.*) results in 4 synced devices.
     const result = await useCase.execute({ homeId: 'test-home-id' });
@@ -305,7 +305,8 @@ describe('SyncDevicesToCloud', () => {
     const payload = emitCall[1];
     payload.devices.forEach((d: CloudDevice) => {
       d.entityIds.forEach((eid: string) => {
-        expect(eid.startsWith('dumio_plug')).toBe(true);
+        const [, name] = eid.split('.');
+        expect(name.startsWith('dumio_plug')).toBe(true);
       });
     });
   });
