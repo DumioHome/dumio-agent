@@ -55,7 +55,7 @@ const createMockHaDevices = (): CloudDevice[] => [
   {
     deviceId: "ha-device-1",
     entityIds: ["light.living_room"],
-    deviceType: "light",
+    deviceType: "dumio_light",
     name: "Living Room Light",
     model: "Smart Bulb",
     manufacturer: "Test",
@@ -79,7 +79,7 @@ const createMockHaDevices = (): CloudDevice[] => [
   {
     deviceId: "ha-device-2",
     entityIds: ["sensor.temperature"],
-    deviceType: "sensor",
+    deviceType: "dumio_sensor",
     name: "Temperature Sensor",
     model: "Temp Sensor",
     manufacturer: "Test",
@@ -102,7 +102,7 @@ const createMockSyncedDevices = (): SyncedDeviceInfo[] => [
     id: "550e8400-e29b-41d4-a716-446655440001", // Dumio UUID
     deviceId: "ha-device-1", // HA device ID
     entityIds: ["light.living_room"],
-    deviceType: "light",
+    deviceType: "dumio_light",
     name: "Living Room Light",
     model: "Smart Bulb",
     manufacturer: "Test",
@@ -128,7 +128,7 @@ const createMockSyncedDevices = (): SyncedDeviceInfo[] => [
     id: "550e8400-e29b-41d4-a716-446655440002", // Dumio UUID
     deviceId: "ha-device-2", // HA device ID
     entityIds: ["sensor.temperature"],
-    deviceType: "sensor",
+    deviceType: "dumio_sensor",
     name: "Temperature Sensor",
     model: "Temp Sensor",
     manufacturer: "Test",
@@ -314,7 +314,7 @@ describe("CapabilitySyncManager", () => {
           {
             deviceId: "ha-device-1",
             entityIds: ["light.test"],
-            deviceType: "light",
+            deviceType: "dumio_light",
             name: "Test",
           },
         ],

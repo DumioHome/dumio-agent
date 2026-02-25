@@ -2,11 +2,11 @@ import type { IHomeAssistantClient } from "../../domain/ports/IHomeAssistantClie
 import type { ICloudClient } from "../../domain/ports/ICloudClient.js";
 import type { ILogger } from "../../domain/ports/ILogger.js";
 import type { EntityState } from "../../domain/entities/Entity.js";
-import type { DeviceType } from "../../domain/entities/Device.js";
 import type {
   CloudCapabilityType,
   CloudCapabilityValue,
   SyncedDeviceInfo,
+  CloudDeviceType,
 } from "../../domain/entities/CloudDevice.js";
 
 /**
@@ -20,8 +20,8 @@ interface EntityDeviceMapping {
   haDeviceId: string;
   /** Entity ID */
   entityId: string;
-  /** Device type */
-  deviceType: DeviceType;
+  /** Cloud-level device type (Dumio classification) */
+  deviceType: CloudDeviceType;
   /** Capability type for this entity */
   capabilityType: CloudCapabilityType;
 }
@@ -103,7 +103,8 @@ export class DeviceStateWatcher {
           dumioDeviceId: device.id, // UUID de Dumio
           haDeviceId: device.deviceId,
           entityId,
-          deviceType: device.deviceType as DeviceType,
+          // Cloud response uses string; we map to our CloudDeviceType union
+          deviceType: device.deviceType as CloudDeviceType,
           capabilityType,
         });
       }
