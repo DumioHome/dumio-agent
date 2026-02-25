@@ -143,6 +143,12 @@ export class GetDevices {
       const [domain] = state.entity_id.split('.');
       const registryEntry = entityRegistry.get(state.entity_id);
 
+      // Official Dumio entities (e.g. climate.dumio_plug_ac_living, sensor.dumio_plug_sensor_battery)
+      // are always considered relevant, even if HA marks them as diagnostic or they lack device_id.
+      const [, namePart] = state.entity_id.split('.');
+      const isDumioOfficial =
+        typeof namePart === 'string' && namePart.startsWith(DUMIO_OFFICIAL_ENTITY_PREFIX);
+
       // Exclude system/virtual domains
       if (EXCLUDED_DOMAINS.includes(domain as (typeof EXCLUDED_DOMAINS)[number])) {
         return false;
@@ -159,15 +165,13 @@ export class GetDevices {
       }
 
       // Exclude diagnostic/config entities (usually not user-facing)
-      if (registryEntry?.entity_category === 'diagnostic' || registryEntry?.entity_category === 'config') {
+      // but keep official Dumio entities regardless of category so all dumio_plug_* are available.
+      if (
+        !isDumioOfficial &&
+        (registryEntry?.entity_category === 'diagnostic' || registryEntry?.entity_category === 'config')
+      ) {
         return false;
       }
-
-      // Official Dumio entities (e.g. climate.dumio_plug_ac_living): include even without device_id
-      // or when the device is not in registry, so they appear in api/devices and devices:sync
-      const [, namePart] = state.entity_id.split('.');
-      const isDumioOfficial =
-        typeof namePart === 'string' && namePart.startsWith(DUMIO_OFFICIAL_ENTITY_PREFIX);
 
       // If onlyPhysical, require a device_id (real physical device) — unless it's a Dumio official entity
       if (onlyPhysical && !isDumioOfficial) {
