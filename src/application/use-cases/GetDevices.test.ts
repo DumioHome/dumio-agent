@@ -362,4 +362,66 @@ describe('GetDevices', () => {
     expect(acDevice!.type).toBe('climate');
     expect(acDevice!.name).toBe('AC Sala');
   });
+
+  it('should include dumio_plug battery sensor even if marked as diagnostic', async () => {
+    mockHaClient.sendCommand = vi.fn().mockImplementation(({ type }) => {
+      if (type === 'config/device_registry/list') {
+        return Promise.resolve({
+          result: [
+            { id: 'real1', name: 'Real', area_id: 'living_room', identifiers: [['zha', 'a']], manufacturer: 'X', model: 'Y' },
+          ],
+        });
+      }
+      if (type === 'config/area_registry/list') {
+        return Promise.resolve({ result: [{ area_id: 'living_room', name: 'Sala' }] });
+      }
+      if (type === 'config/entity_registry/list') {
+        return Promise.resolve({
+          result: [
+            { entity_id: 'light.real', device_id: 'real1', area_id: 'living_room' },
+            {
+              entity_id: 'sensor.dumio_plug_sensor_battery',
+              // Typical for battery sensors in HA: entity_category diagnostic
+              entity_category: 'diagnostic',
+              // No device_id or pointing to a non-real device would normally exclude it
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ result: [] });
+    });
+
+    mockHaClient.getStates = vi.fn().mockResolvedValue([
+      {
+        entity_id: 'light.real',
+        state: 'on',
+        attributes: { friendly_name: 'Real' },
+        last_changed: '',
+        last_updated: '',
+        context: { id: '', parent_id: null, user_id: null },
+      },
+      {
+        entity_id: 'sensor.dumio_plug_sensor_battery',
+        state: '100.0',
+        attributes: {
+          friendly_name: 'T&H Sensor Batería',
+          unit_of_measurement: '%',
+          device_class: 'battery',
+          state_class: 'measurement',
+        },
+        last_changed: '2026-02-25T13:50:24Z',
+        last_updated: '2026-02-25T13:50:24Z',
+        context: { id: '01KJAH1BRMTN5CN5QMFA8PTW0N', parent_id: null, user_id: null },
+      },
+    ]);
+
+    const result = await useCase.execute({ includeFullDetails: true });
+    expect(result.count).toBe(2);
+    const batteryDevice = (result.devices as Device[]).find(
+      (d) => d.entityId === 'sensor.dumio_plug_sensor_battery'
+    );
+    expect(batteryDevice).toBeDefined();
+    expect(batteryDevice!.type).toBe('battery');
+    expect(batteryDevice!.name).toBe('T&H Sensor Batería');
+  });
 });
