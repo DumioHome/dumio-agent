@@ -4,6 +4,7 @@ import type { Device, DeviceFilter, DeviceSummary } from '../../domain/entities/
 import { EXCLUDED_DOMAINS, PHYSICAL_DEVICE_DOMAINS, VIRTUAL_DEVICE_INTEGRATIONS } from '../../domain/entities/Device.js';
 import { DeviceMapper, type HADeviceInfo, type HAAreaInfo } from '../../infrastructure/mappers/DeviceMapper.js';
 import type { EntityState } from '../../domain/entities/Entity.js';
+import { DUMIO_OFFICIAL_ENTITY_PREFIX } from '../../domain/entities/DumioEntity.js';
 
 export interface GetDevicesInput {
   filter?: DeviceFilter;
@@ -162,8 +163,14 @@ export class GetDevices {
         return false;
       }
 
-      // If onlyPhysical, require a device_id (real physical device)
-      if (onlyPhysical) {
+      // Official Dumio entities (e.g. climate.dumio_plug_ac_living): include even without device_id
+      // or when the device is not in registry, so they appear in api/devices and devices:sync
+      const [, namePart] = state.entity_id.split('.');
+      const isDumioOfficial =
+        typeof namePart === 'string' && namePart.startsWith(DUMIO_OFFICIAL_ENTITY_PREFIX);
+
+      // If onlyPhysical, require a device_id (real physical device) — unless it's a Dumio official entity
+      if (onlyPhysical && !isDumioOfficial) {
         if (!registryEntry?.device_id) {
           return false;
         }

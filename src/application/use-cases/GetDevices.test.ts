@@ -317,4 +317,49 @@ describe('GetDevices', () => {
     const result = await useCase.execute({ includeFullDetails: true });
     expect(result.count).toBe(1);
   });
+
+  it('should include dumio_plug entities (e.g. climate.dumio_plug_ac_living) even without device_id or real device', async () => {
+    mockHaClient.sendCommand = vi.fn().mockImplementation(({ type }) => {
+      if (type === 'config/device_registry/list') {
+        return Promise.resolve({
+          result: [
+            { id: 'real1', name: 'Real', area_id: 'living_room', identifiers: [['zha', 'a']], manufacturer: 'X', model: 'Y' },
+          ],
+        });
+      }
+      if (type === 'config/area_registry/list') return Promise.resolve({ result: [{ area_id: 'living_room', name: 'Sala' }] });
+      if (type === 'config/entity_registry/list') {
+        return Promise.resolve({
+          result: [
+            { entity_id: 'light.real', device_id: 'real1', area_id: 'living_room' },
+            // climate.dumio_plug_ac_living has no device_id (e.g. Broadlink/Philco AC)
+          ],
+        });
+      }
+      return Promise.resolve({ result: [] });
+    });
+    mockHaClient.getStates = vi.fn().mockResolvedValue([
+      { entity_id: 'light.real', state: 'on', attributes: { friendly_name: 'Real' }, last_changed: '', last_updated: '', context: { id: '', parent_id: null, user_id: null } },
+      {
+        entity_id: 'climate.dumio_plug_ac_living',
+        state: 'cool',
+        attributes: {
+          friendly_name: 'AC Sala',
+          temperature: 24,
+          hvac_modes: ['off', 'cool', 'heat'],
+          manufacturer: 'Philco',
+          supported_controller: 'Broadlink',
+        },
+        last_changed: '2026-02-24T19:00:39Z',
+        last_updated: '2026-02-24T19:00:39Z',
+        context: { id: '01KJ8GCQW5SYVZW3C8E9CDYR9G', parent_id: null, user_id: null },
+      },
+    ]);
+    const result = await useCase.execute({ includeFullDetails: true });
+    expect(result.count).toBe(2);
+    const acDevice = (result.devices as Device[]).find((d) => d.entityId === 'climate.dumio_plug_ac_living');
+    expect(acDevice).toBeDefined();
+    expect(acDevice!.type).toBe('climate');
+    expect(acDevice!.name).toBe('AC Sala');
+  });
 });

@@ -4,7 +4,7 @@ import type { Device } from "../../domain/entities/Device.js";
 import type { CloudDevice } from "../../domain/entities/CloudDevice.js";
 import { GetDevices } from "./GetDevices.js";
 import { DeviceToCloudTransformer } from "./DeviceToCloudTransformer.js";
-import { DUMIO_OFFICIAL_ENTITY_PREFIX } from "./SyncDevicesToCloud.js";
+import { isDumioOfficialEntity } from "../../domain/entities/DumioEntity.js";
 
 export interface GetCloudDevicesOutput {
   devices: CloudDevice[];
@@ -33,13 +33,9 @@ export class GetCloudDevices {
 
     const allDevices = devicesResult.devices as Device[];
 
-    const officialDevices = allDevices.filter((d) => {
-      const [, name] = d.entityId.split(".");
-      return (
-        typeof name === "string" &&
-        name.startsWith(DUMIO_OFFICIAL_ENTITY_PREFIX)
-      );
-    });
+    const officialDevices = allDevices.filter((d) =>
+      isDumioOfficialEntity(d.entityId)
+    );
 
     const devices = DeviceToCloudTransformer.transform(officialDevices);
 
