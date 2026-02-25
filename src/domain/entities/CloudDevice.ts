@@ -60,31 +60,17 @@ export interface CloudCapability {
 }
 
 /**
- * Cloud device type mapping - matches domain DeviceType
+ * Cloud device type mapping - high level Dumio classifications.
+ * Derived from all entities of a physical device (switch + sensor => dumio_smart_switch, etc.).
  */
 export type CloudDeviceType =
-  | "light"
-  | "switch"
-  | "sensor"
-  | "binary_sensor"
-  | "climate"
-  | "cover"
-  | "fan"
-  | "media_player"
-  | "camera"
-  | "lock"
-  | "vacuum"
-  | "speaker"
-  | "tv"
-  | "thermostat"
-  | "door"
-  | "window"
-  | "motion"
-  | "temperature"
-  | "humidity"
-  | "power"
-  | "battery"
-  | "unknown";
+  | "dumio_ac"
+  | "dumio_light"
+  | "dumio_switch"
+  | "dumio_smart_switch"
+  | "dumio_sensor"
+  | "dumio_generic_switch"
+  | "dumio_generic_sensor";
 
 /**
  * Cloud device format for sync

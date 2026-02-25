@@ -6,6 +6,7 @@ import type {
   CloudDevice,
   CloudCapability,
   CloudCapabilityType,
+  CloudDeviceType,
 } from "../../domain/entities/CloudDevice.js";
 
 /**
@@ -15,24 +16,96 @@ import type {
 export class DeviceToCloudTransformer {
   /**
    * Transform HA devices to CloudDevice format.
-   * Each entity becomes a separate CloudDevice with deviceId from HA registry.
+   * Each entity becomes a separate CloudDevice, but the deviceType is
+   * classified using ALL entities of the same physical device (same deviceId).
    */
   static transform(haDevices: Device[]): CloudDevice[] {
-    return haDevices.map((device) => this.createCloudDeviceFromEntity(device));
+    // Group entities by physical deviceId
+    const byDeviceId = new Map<string, Device[]>();
+    for (const device of haDevices) {
+      const list = byDeviceId.get(device.id) ?? [];
+      list.push(device);
+      byDeviceId.set(device.id, list);
+    }
+
+    return haDevices.map((device) => {
+      const group = byDeviceId.get(device.id) ?? [device];
+      const deviceType = this.classifyDevice(group);
+      return this.createCloudDeviceFromEntity(device, deviceType);
+    });
   }
 
-  private static createCloudDeviceFromEntity(device: Device): CloudDevice {
+  private static createCloudDeviceFromEntity(
+    device: Device,
+    deviceType: CloudDeviceType
+  ): CloudDevice {
     const capabilities = this.extractCapabilities(device);
     return {
       deviceId: device.id,
       entityIds: [device.entityId],
-      deviceType: device.type,
+      deviceType,
       model: device.model,
       manufacturer: device.manufacturer,
       roomName: device.roomName,
       integration: device.integration,
       capabilities,
     };
+  }
+
+  /**
+   * Classify a physical device based on all its entities (Device[])
+   * and return a Dumio-level CloudDeviceType.
+   */
+  private static classifyDevice(devices: Device[]): CloudDeviceType {
+    const types = devices.map((d) => d.type);
+
+    const hasClimate =
+      types.includes("climate") || types.includes("thermostat");
+    const hasLight = types.includes("light");
+    const hasSwitch = types.includes("switch");
+    const hasPowerSensor = types.includes("power");
+    const hasTemp = types.includes("temperature");
+    const hasHumidity = types.includes("humidity");
+
+    // Sensor-like device types (environmental sensors, binary sensors, etc.)
+    const sensorLikeTypes: DeviceType[] = [
+      "sensor",
+      "binary_sensor",
+      "temperature",
+      "humidity",
+      "power",
+      "battery",
+      "door",
+      "window",
+      "motion",
+    ];
+    const hasSensorLike = devices.some((d) =>
+      sensorLikeTypes.includes(d.type)
+    );
+
+    // 1) Climate always wins (ACs, thermostats)
+    if (hasClimate) return "dumio_ac";
+
+    // 2) Pure lights
+    if (hasLight) return "dumio_light";
+
+    // 3) Smart switches / plugs: switch + any measurement/TH/battery sensor
+    if (
+      hasSwitch &&
+      (hasPowerSensor || hasTemp || hasHumidity || hasSensorLike)
+    ) {
+      return "dumio_smart_switch";
+    }
+
+    // 4) Simple wall switches: only switch (no sensors)
+    if (hasSwitch) return "dumio_switch";
+
+    // 5) Only sensors (TH, power, motion, etc.)
+    if (hasSensorLike) return "dumio_sensor";
+
+    // 6) Fallbacks
+    if (hasLight || hasSwitch) return "dumio_generic_switch";
+    return "dumio_generic_sensor";
   }
 
   private static extractCapabilities(device: Device): CloudCapability[] {

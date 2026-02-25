@@ -233,16 +233,20 @@ describe('SyncDevicesToCloud', () => {
     const payload = emitCall[1];
     
     // Both sensors are separate CloudDevices
-    const tempSensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('sensor.dumio_plug_temperature'));
-    const humiditySensor = payload.devices.find((d: CloudDevice) => d.entityIds.includes('sensor.dumio_plug_humidity'));
+    const tempSensor = payload.devices.find((d: CloudDevice) =>
+      d.entityIds.includes('sensor.dumio_plug_temperature')
+    );
+    const humiditySensor = payload.devices.find((d: CloudDevice) =>
+      d.entityIds.includes('sensor.dumio_plug_humidity')
+    );
 
-    // Temperature sensor
-    expect(tempSensor.deviceType).toBe('temperature');
+    // Temperature sensor (from multi-sensor device) -> classified as Dumio sensor
+    expect(tempSensor.deviceType).toBe('dumio_sensor');
     expect(tempSensor.capabilities).toHaveLength(1);
     expect(tempSensor.capabilities[0].capabilityType).toBe('temperature');
 
-    // Humidity sensor
-    expect(humiditySensor.deviceType).toBe('humidity');
+    // Humidity sensor (same physical device) -> same Dumio sensor classification
+    expect(humiditySensor.deviceType).toBe('dumio_sensor');
     expect(humiditySensor.capabilities).toHaveLength(1);
     expect(humiditySensor.capabilities[0].capabilityType).toBe('humidity');
   });
@@ -256,7 +260,7 @@ describe('SyncDevicesToCloud', () => {
 
     expect(lightDevice).toBeDefined();
     expect(lightDevice.deviceId).toBe('device1');
-    expect(lightDevice.deviceType).toBe('light');
+    expect(lightDevice.deviceType).toBe('dumio_light');
     // name field is no longer sent - device names are managed via GraphQL mutations
     expect(lightDevice.name).toBeUndefined();
     expect(lightDevice.manufacturer).toBe('Philips');
@@ -283,7 +287,7 @@ describe('SyncDevicesToCloud', () => {
 
     expect(switchDevice).toBeDefined();
     expect(switchDevice.deviceId).toBe('device2');
-    expect(switchDevice.deviceType).toBe('switch');
+    expect(switchDevice.deviceType).toBe('dumio_switch');
     // name field is no longer sent - device names are managed via GraphQL mutations
     expect(switchDevice.name).toBeUndefined();
     expect(switchDevice.manufacturer).toBe('TP-Link');

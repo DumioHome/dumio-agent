@@ -5,6 +5,12 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [1.3.4] - 2026-02-24
+
+### Agregado
+
+- Fix deviceType with capabilities
+
 ## [1.3.3] - 2026-02-24
 
 ### Agregado

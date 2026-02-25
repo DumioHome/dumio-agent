@@ -110,7 +110,7 @@ describe("GetCloudDevices", () => {
     expect(result.devices).toHaveLength(1);
     expect(result.devices[0].entityIds).toEqual(["switch.dumio_plug_kitchen"]);
     expect(result.devices[0].deviceId).toBe("dev1");
-    expect(result.devices[0].deviceType).toBe("switch");
+    expect(result.devices[0].deviceType).toBe("dumio_switch");
   });
 
   it("returns CloudDevice shape (deviceId, entityIds, deviceType, capabilities, etc.)", async () => {
