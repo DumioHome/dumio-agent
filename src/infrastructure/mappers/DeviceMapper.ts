@@ -333,9 +333,9 @@ export class DeviceMapper {
     if (!deviceInfo) return null;
 
     // Try to get integration from identifiers (most reliable)
-    if (deviceInfo.identifiers && deviceInfo.identifiers.length > 0) {
-      // identifiers is an array of [integration, id] tuples
-      const [integration] = deviceInfo.identifiers[0];
+    const firstId = deviceInfo.identifiers?.[0];
+    if (Array.isArray(firstId) && firstId.length > 0) {
+      const [integration] = firstId;
       return integration?.toLowerCase() ?? null;
     }
 
@@ -344,7 +344,7 @@ export class DeviceMapper {
       const mfr = deviceInfo.manufacturer.toLowerCase();
       if (mfr.includes('tuya') || mfr.includes('smart life')) return 'tuya';
       if (mfr.includes('xiaomi') || mfr.includes('aqara') || mfr.includes('mija')) return 'xiaomi_miio';
-      if (mfr.includes('philips') && mfr.includes('hue')) return 'hue';
+      if (mfr.includes('philips') && mfr.includes('hue') || mfr === 'signify') return 'hue';
       if (mfr.includes('ikea')) return 'ikea';
       if (mfr.includes('shelly')) return 'shelly';
       if (mfr.includes('sonoff')) return 'sonoff';

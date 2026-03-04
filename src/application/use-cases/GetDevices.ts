@@ -328,9 +328,10 @@ export class GetDevices {
    * Extract integration name from device info
    */
   private extractDeviceIntegration(device: HADeviceInfo): string | null {
-    // Primary: get from identifiers
-    if (device.identifiers && device.identifiers.length > 0) {
-      const [integration] = device.identifiers[0];
+    // Primary: get from identifiers (guard: Philips Hue and others may have null/empty entries)
+    const firstId = device.identifiers?.[0];
+    if (Array.isArray(firstId) && firstId.length > 0) {
+      const [integration] = firstId;
       return integration?.toLowerCase() ?? null;
     }
 
