@@ -5,6 +5,12 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [1.3.6] - 2026-03-04
+
+### Agregado
+
+- Phillip Hue rba colors fix
+
 ## [1.3.5] - 2026-03-04
 
 ### Agregado
