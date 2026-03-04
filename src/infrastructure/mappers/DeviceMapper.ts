@@ -181,9 +181,9 @@ export class DeviceMapper {
       mapped.colorTemp = Math.round(1000000 / (attributes.color_temp as number));
     }
 
-    // RGB Color
-    if (attributes.rgb_color !== undefined) {
-      const rgb = attributes.rgb_color as number[];
+    // RGB Color (Philips Hue and others may have rgb_color: null when light is off)
+    const rgb = attributes.rgb_color;
+    if (Array.isArray(rgb) && rgb.length >= 3) {
       mapped.color = { r: rgb[0], g: rgb[1], b: rgb[2] };
     }
 
