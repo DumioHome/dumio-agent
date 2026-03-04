@@ -363,6 +363,39 @@ describe('GetDevices', () => {
     expect(acDevice!.name).toBe('AC Sala');
   });
 
+  it('should not throw when device has null identifier entry (e.g. Philips Hue rooms/groups)', async () => {
+    mockHaClient.sendCommand = vi.fn().mockImplementation(({ type }) => {
+      if (type === 'config/device_registry/list') {
+        return Promise.resolve({
+          result: [
+            { id: 'real1', name: 'Real', area_id: 'living_room', identifiers: [['zha', 'a']], manufacturer: 'X', model: 'Y' },
+            // Philips Hue can return devices with null or malformed identifier entries
+            { id: 'hue-room-1', name: 'Habitación', area_id: 'bedroom', identifiers: [null], manufacturer: 'Signify', model: 'Hue Room' },
+          ],
+        });
+      }
+      if (type === 'config/area_registry/list') return Promise.resolve({ result: [{ area_id: 'living_room', name: 'Sala' }, { area_id: 'bedroom', name: 'Dormitorio' }] });
+      if (type === 'config/entity_registry/list') {
+        return Promise.resolve({
+          result: [
+            { entity_id: 'light.real', device_id: 'real1', area_id: 'living_room' },
+            { entity_id: 'light.habitacion', device_id: 'hue-room-1', area_id: 'bedroom' },
+          ],
+        });
+      }
+      return Promise.resolve({ result: [] });
+    });
+    mockHaClient.getStates = vi.fn().mockResolvedValue([
+      { entity_id: 'light.real', state: 'on', attributes: { friendly_name: 'Real' }, last_changed: '', last_updated: '', context: { id: '', parent_id: null, user_id: null } },
+      { entity_id: 'light.habitacion', state: 'off', attributes: { friendly_name: 'Habitación', is_hue_group: true }, last_changed: '', last_updated: '', context: { id: '', parent_id: null, user_id: null } },
+    ]);
+    const result = await useCase.execute({ includeFullDetails: true });
+    expect(result.count).toBe(2);
+    const hueDevice = (result.devices as Device[]).find((d) => d.entityId === 'light.habitacion');
+    expect(hueDevice).toBeDefined();
+    expect(hueDevice!.integration).toBe('hue');
+  });
+
   it('should include dumio_plug battery sensor even if marked as diagnostic', async () => {
     mockHaClient.sendCommand = vi.fn().mockImplementation(({ type }) => {
       if (type === 'config/device_registry/list') {
