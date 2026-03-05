@@ -43,8 +43,7 @@ export class HttpServer {
   private lastEntityCount: number = 0;
   private lastDeviceCount: number = 0;
 
-  // Clientes SSE suscritos a capability:local:update
-  private localCapabilityClients = new Set<ServerResponse>();
+  // Suscripción única a updates locales de capabilities para WebSocket
   private localCapabilitySubscribed = false;
 
   // WebSocket server para capability:local:update (path /api/ws)
@@ -160,6 +159,8 @@ export class HttpServer {
       this.wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
         this.wsClients.add(ws);
         this.logger.debug('WebSocket client connected', { total: this.wsClients.size });
+        // Asegurar que estamos suscritos a las actualizaciones locales
+        this.ensureLocalCapabilitySubscription();
         ws.on('close', () => {
           this.wsClients.delete(ws);
         });
@@ -284,10 +285,6 @@ export class HttpServer {
         return await this.handleSyncDevices(req, res);
       }
 
-      if (path === '/api/events/capabilities' && method === 'GET') {
-        return await this.handleCapabilityEvents(req, res);
-      }
-
       if (path === '/api/devices/control' && method === 'POST') {
         return await this.handleControlDevice(req, res);
       }
@@ -305,39 +302,8 @@ export class HttpServer {
   }
 
   /**
-   * Endpoint SSE para recibir en tiempo real las capabilities locales
-   * Evento: capability:local:update
-   */
-  private async handleCapabilityEvents(
-    _req: IncomingMessage,
-    res: ServerResponse
-  ): Promise<void> {
-    // Configurar cabeceras SSE
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
-    });
-
-    // Enviar un comentario inicial para mantener la conexión viva
-    res.write(": connected to capability:local:update stream\n\n");
-
-    // Registrar cliente
-    this.localCapabilityClients.add(res);
-
-    // Asegurar que estamos suscritos a las actualizaciones locales
-    this.ensureLocalCapabilitySubscription();
-
-    // Limpiar cuando el cliente cierra la conexión
-    res.on("close", () => {
-      this.localCapabilityClients.delete(res);
-    });
-  }
-
-  /**
    * Garantiza una única suscripción a DeviceStateWatcher para reenviar
-   * las capability:update locales a todos los clientes SSE.
+   * las capability:update locales a todos los clientes WebSocket.
    */
   private ensureLocalCapabilitySubscription(): void {
     if (this.localCapabilitySubscribed) {
@@ -353,12 +319,6 @@ export class HttpServer {
     }
 
     capabilitySyncManager.subscribeToLocalCapabilityUpdates((update) => {
-      const payload = JSON.stringify(update);
-      for (const client of this.localCapabilityClients) {
-        client.write(
-          `event: capability:local:update\ndata: ${payload}\n\n`
-        );
-      }
       // WebSocket: enviar { event, data } para que la app escuche capability:local:update
       const wsMessage = JSON.stringify({
         event: 'capability:local:update',
@@ -372,7 +332,7 @@ export class HttpServer {
     });
 
     this.localCapabilitySubscribed = true;
-    this.logger.info("Subscribed to local capability updates for SSE clients");
+    this.logger.info("Subscribed to local capability updates for WebSocket clients");
   }
 
   /**

@@ -293,15 +293,6 @@ export class DeviceStateWatcher {
       return;
     }
 
-    // Check if cloud client is connected
-    if (this.cloudClient.connectionState !== "connected") {
-      this.logger.debug("Skipping capability update: cloud not connected", {
-        entityId,
-      });
-      this.stats.updatesSkipped++;
-      return;
-    }
-
     // Extract the new value based on capability type (wrapped in object)
     const currentValue = this.extractCapabilityValue(
       mapping.capabilityType,
@@ -339,12 +330,18 @@ export class DeviceStateWatcher {
     currentValue: CloudCapabilityValue,
     entityId: string
   ): void {
-    // Send update to cloud (fire and forget for performance)
-    this.cloudClient.emit("capability:update", {
-      deviceId: mapping.dumioDeviceId, // UUID de Dumio, NOT HA deviceId
-      capabilityType: mapping.capabilityType,
-      currentValue, // Object: { on: true }, { value: 75 }, etc.
-    });
+    // Enviar a cloud solo si está conectado (pero siempre emitir local)
+    if (this.cloudClient.connectionState === "connected") {
+      this.cloudClient.emit("capability:update", {
+        deviceId: mapping.dumioDeviceId, // UUID de Dumio, NOT HA deviceId
+        capabilityType: mapping.capabilityType,
+        currentValue, // Object: { on: true }, { value: 75 }, etc.
+      });
+    } else {
+      this.logger.debug("Skipping capability:update emit: cloud not connected", {
+        entityId,
+      });
+    }
 
     // Notificar a listeners locales (socket/SSE): device del sync + capability actualizada
     const device = this.devicesByDumioId.get(mapping.dumioDeviceId);
