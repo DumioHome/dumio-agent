@@ -35,6 +35,17 @@ interface CachedState {
 }
 
 /**
+ * Payload para actualizaciones locales de capabilities
+ * (mismo shape que lo que se envía al cloud, pero con entityId)
+ */
+export interface LocalCapabilityUpdate {
+  deviceId: string;
+  entityId: string;
+  capabilityType: CloudCapabilityType;
+  currentValue: CloudCapabilityValue;
+}
+
+/**
  * Service that watches for HA state changes and sends real-time updates to cloud
  * Must be initialized after a successful devices:sync with the sync response
  * Only sends updates when values actually change (optimized for performance)
@@ -71,11 +82,44 @@ export class DeviceStateWatcher {
     updatesFailed: 0,
   };
 
+  /** Suscriptores locales para capability:local:update */
+  private localListeners: Array<(update: LocalCapabilityUpdate) => void> = [];
+
   constructor(
     private readonly haClient: IHomeAssistantClient,
     private readonly cloudClient: ICloudClient,
     private readonly logger: ILogger
   ) {}
+
+  /**
+   * Suscribirse a actualizaciones locales de capabilities
+   * (no depende del cloud, pensado para apps en la LAN)
+   */
+  onLocalCapabilityUpdate(listener: (update: LocalCapabilityUpdate) => void): void {
+    this.localListeners.push(listener);
+  }
+
+  /**
+   * Cancelar suscripción a actualizaciones locales
+   */
+  offLocalCapabilityUpdate(listener: (update: LocalCapabilityUpdate) => void): void {
+    this.localListeners = this.localListeners.filter((l) => l !== listener);
+  }
+
+  /**
+   * Notificar a todos los listeners locales
+   */
+  private notifyLocalCapabilityUpdate(update: LocalCapabilityUpdate): void {
+    for (const listener of this.localListeners) {
+      try {
+        listener(update);
+      } catch (error) {
+        this.logger.error("Error in local capability listener", {
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+  }
 
   /**
    * Initialize the watcher with device mappings from a sync response
@@ -285,6 +329,14 @@ export class DeviceStateWatcher {
       currentValue, // Object: { on: true }, { value: 75 }, etc.
     });
 
+    // Notificar también a los listeners locales (para uso en LAN)
+    this.notifyLocalCapabilityUpdate({
+      deviceId: mapping.dumioDeviceId,
+      entityId,
+      capabilityType: mapping.capabilityType,
+      currentValue,
+    });
+
     // Cache the sent value
     this.lastSentValues.set(entityId, {
       value: currentValue,
@@ -454,12 +506,13 @@ export class DeviceStateWatcher {
         }
         return null;
 
-      case "color":
-        if (attrs.rgb_color !== undefined) {
-          const rgb = attrs.rgb_color as number[];
+      case "color": {
+        const rgb = attrs.rgb_color;
+        if (Array.isArray(rgb) && rgb.length >= 3) {
           return { r: rgb[0], g: rgb[1], b: rgb[2] };
         }
         return null;
+      }
 
       case "temperature": {
         const temp =
