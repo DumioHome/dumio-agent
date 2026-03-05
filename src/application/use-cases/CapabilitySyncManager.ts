@@ -4,6 +4,7 @@ import type {
   CloudConnectionState,
 } from "../../domain/ports/ICloudClient.js";
 import type { ILogger } from "../../domain/ports/ILogger.js";
+import type { LocalCapabilityUpdate } from "./DeviceStateWatcher.js";
 import type {
   CloudDevice,
   SyncedDeviceInfo,
@@ -121,6 +122,25 @@ export class CapabilitySyncManager {
       watchingEntities: this.deviceStateWatcher.mappingCount,
       controllableDevices: this.deviceController.mappingCount,
     });
+  }
+
+  /**
+   * Permite que capas superiores (por ejemplo, el HttpServer local)
+   * se suscriban a las actualizaciones locales de capabilities.
+   *
+   * Esto NO depende de la conexión al cloud; se dispara siempre que
+   * DeviceStateWatcher detecta un cambio real en Home Assistant.
+   */
+  subscribeToLocalCapabilityUpdates(
+    listener: (update: LocalCapabilityUpdate) => void
+  ): void {
+    if (!this.deviceStateWatcher) {
+      this.logger.warn(
+        "Cannot subscribe to local capability updates: DeviceStateWatcher not initialized"
+      );
+      return;
+    }
+    this.deviceStateWatcher.onLocalCapabilityUpdate(listener);
   }
 
   /**
