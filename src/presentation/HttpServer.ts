@@ -1,4 +1,5 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
+import WebSocket, { WebSocketServer } from 'ws';
 import type { Agent } from './Agent.js';
 import type { ILogger } from '../domain/ports/ILogger.js';
 import type { DeviceFilter, DeviceType } from '../domain/entities/Device.js';
@@ -45,6 +46,10 @@ export class HttpServer {
   // Clientes SSE suscritos a capability:local:update
   private localCapabilityClients = new Set<ServerResponse>();
   private localCapabilitySubscribed = false;
+
+  // WebSocket server para capability:local:update (path /api/ws)
+  private wss: WebSocketServer | null = null;
+  private wsClients = new Set<WebSocket>();
 
   constructor(
     private readonly agent: Agent,
@@ -143,7 +148,7 @@ export class HttpServer {
   }
 
   /**
-   * Start the HTTP server
+   * Start the HTTP server and WebSocket server (path /api/ws)
    */
   start(): Promise<void> {
     return new Promise((resolve) => {
@@ -151,10 +156,23 @@ export class HttpServer {
         this.handleRequest(req, res);
       });
 
+      this.wss = new WebSocketServer({ server: this.server!, path: '/api/ws' });
+      this.wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
+        this.wsClients.add(ws);
+        this.logger.debug('WebSocket client connected', { total: this.wsClients.size });
+        ws.on('close', () => {
+          this.wsClients.delete(ws);
+        });
+        ws.on('error', () => {
+          this.wsClients.delete(ws);
+        });
+      });
+
       this.server.listen(this.config.port, this.config.host ?? '0.0.0.0', () => {
         this.logger.info('HTTP Server started', {
           port: this.config.port,
           host: this.config.host ?? '0.0.0.0',
+          websocketPath: '/api/ws',
         });
         resolve();
       });
@@ -162,17 +180,27 @@ export class HttpServer {
   }
 
   /**
-   * Stop the HTTP server
+   * Stop the HTTP server and WebSocket server
    */
   stop(): Promise<void> {
     return new Promise((resolve) => {
-      if (this.server) {
-        this.server.close(() => {
-          this.logger.info('HTTP Server stopped');
-          resolve();
-        });
-      } else {
+      const done = () => {
+        this.logger.info('HTTP Server stopped');
         resolve();
+      };
+      if (this.wss) {
+        this.wss.close(() => {
+          this.wss = null;
+          if (this.server) {
+            this.server.close(done);
+          } else {
+            done();
+          }
+        });
+      } else if (this.server) {
+        this.server.close(done);
+      } else {
+        done();
       }
     });
   }
@@ -330,6 +358,16 @@ export class HttpServer {
         client.write(
           `event: capability:local:update\ndata: ${payload}\n\n`
         );
+      }
+      // WebSocket: enviar { event, data } para que la app escuche capability:local:update
+      const wsMessage = JSON.stringify({
+        event: 'capability:local:update',
+        data: update,
+      });
+      for (const ws of this.wsClients) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(wsMessage);
+        }
       }
     });
 
