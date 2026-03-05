@@ -35,14 +35,22 @@ interface CachedState {
 }
 
 /**
- * Payload para actualizaciones locales de capabilities
- * (mismo shape que lo que se envía al cloud, pero con entityId)
+ * Payload para actualizaciones locales de capabilities.
+ * Incluye el device del sync y la capability actualizada para la app/socket.
  */
 export interface LocalCapabilityUpdate {
+  /** UUID Dumio del dispositivo */
   deviceId: string;
+  /** entity_id de HA que cambió */
   entityId: string;
+  /** Tipo de capability (switch, brightness, color, etc.) */
   capabilityType: CloudCapabilityType;
+  /** Valor actual de la capability */
   currentValue: CloudCapabilityValue;
+  /** Dispositivo completo tal como quedó tras devices:sync (CapabilitySyncManager initialized after sync) */
+  device: SyncedDeviceInfo;
+  /** Capability actualizada: tipo + valor */
+  capability: { capabilityType: CloudCapabilityType; currentValue: CloudCapabilityValue };
 }
 
 /**
@@ -55,6 +63,9 @@ export interface LocalCapabilityUpdate {
 export class DeviceStateWatcher {
   /** Map of entityId -> device mapping info */
   private entityMappings = new Map<string, EntityDeviceMapping>();
+
+  /** Map of Dumio deviceId -> full device from sync (para enviar device en capability:local:update) */
+  private devicesByDumioId = new Map<string, SyncedDeviceInfo>();
 
   /** Map of entityId -> last sent value (for change detection) */
   private lastSentValues = new Map<string, CachedState>();
@@ -134,8 +145,14 @@ export class DeviceStateWatcher {
   ): void {
     this.currentHomeId = homeId;
     this.entityMappings.clear();
+    this.devicesByDumioId.clear();
     this.lastSentValues.clear();
     this.resetStats();
+
+    // Guardar dispositivos del sync para enviarlos en capability:local:update
+    for (const device of syncedDevices) {
+      this.devicesByDumioId.set(device.id, device);
+    }
 
     // Build entity -> device mapping with Dumio UUIDs
     for (const device of syncedDevices) {
@@ -329,13 +346,18 @@ export class DeviceStateWatcher {
       currentValue, // Object: { on: true }, { value: 75 }, etc.
     });
 
-    // Notificar también a los listeners locales (para uso en LAN)
-    this.notifyLocalCapabilityUpdate({
-      deviceId: mapping.dumioDeviceId,
-      entityId,
-      capabilityType: mapping.capabilityType,
-      currentValue,
-    });
+    // Notificar a listeners locales (socket/SSE): device del sync + capability actualizada
+    const device = this.devicesByDumioId.get(mapping.dumioDeviceId);
+    if (device) {
+      this.notifyLocalCapabilityUpdate({
+        deviceId: mapping.dumioDeviceId,
+        entityId,
+        capabilityType: mapping.capabilityType,
+        currentValue,
+        device,
+        capability: { capabilityType: mapping.capabilityType, currentValue },
+      });
+    }
 
     // Cache the sent value
     this.lastSentValues.set(entityId, {
